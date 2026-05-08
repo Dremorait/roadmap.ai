@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import { SAMPLE_FEEDBACK, CLUSTER_THEMES, MOCK_ROADMAP_ITEMS } from '../data/mockData';
 
 const AppContext = createContext(null);
@@ -8,10 +9,6 @@ const NVIDIA_API_KEY  = import.meta.env.VITE_NVIDIA_API_KEY  ?? '';
 const NVIDIA_BASE_URL = import.meta.env.VITE_NVIDIA_BASE_URL ?? 'https://integrate.api.nvidia.com/v1';
 const MODEL           = 'meta/llama-3.3-70b-instruct';
 
-/**
- * Call NVIDIA NIM chat/completions.
- * Returns the assistant message text, or throws on network / API error.
- */
 async function nvidiaChat(messages, { maxTokens = 2048, temperature = 0.7 } = {}) {
   const res = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
     method: 'POST',
@@ -19,62 +16,172 @@ async function nvidiaChat(messages, { maxTokens = 2048, temperature = 0.7 } = {}
       'Content-Type': 'application/json',
       Authorization: `Bearer ${NVIDIA_API_KEY}`,
     },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      max_tokens: maxTokens,
-      temperature,
-      stream: false,
-    }),
+    body: JSON.stringify({ model: MODEL, messages, max_tokens: maxTokens, temperature, stream: false }),
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`NVIDIA API ${res.status}: ${err}`);
-  }
-
+  if (!res.ok) { const e = await res.text(); throw new Error(`NVIDIA API ${res.status}: ${e}`); }
   const data = await res.json();
   return data.choices?.[0]?.message?.content ?? '';
 }
 
-// ── Local score helpers (kept for roadmap card population) ────────
 function deriveScores(feedbackItems) {
-  const tags        = [...new Set(feedbackItems.flatMap(f => f.tags))];
-  const sources     = [...new Set(feedbackItems.map(f => f.source))];
-  const negCount    = feedbackItems.filter(f => f.sentiment < 0.35).length;
-  const totalVotes  = feedbackItems.reduce((s, f) => s + f.votes, 0);
-  const avgSentiment= (feedbackItems.reduce((s, f) => s + f.sentiment, 0) / feedbackItems.length).toFixed(2);
-  const impactScore = Math.min(10, Math.round(4 + (negCount / feedbackItems.length) * 3 + (totalVotes / 30)));
-  const complexity  = tags.some(t => ['api','sso','auth','enterprise'].includes(t)) ? 'High'
-                    : tags.some(t => ['performance','pagination','mobile'].includes(t)) ? 'Medium' : 'Low';
-  const effortLabel = complexity === 'High' ? 'L' : complexity === 'Medium' ? 'M' : 'S';
-  const priorityFlag= impactScore >= 8 ? '🔴 CRITICAL — Ship in current sprint'
-                    : impactScore >= 6 ? '🟠 HIGH — Ship in next sprint'
-                    : '🟡 MEDIUM — Backlog for Q-plan';
+  const tags         = [...new Set(feedbackItems.flatMap(f => f.tags))];
+  const sources      = [...new Set(feedbackItems.map(f => f.source))];
+  const negCount     = feedbackItems.filter(f => f.sentiment < 0.35).length;
+  const totalVotes   = feedbackItems.reduce((s, f) => s + f.votes, 0);
+  const avgSentiment = (feedbackItems.reduce((s, f) => s + f.sentiment, 0) / feedbackItems.length).toFixed(2);
+  const impactScore  = Math.min(10, Math.round(4 + (negCount / feedbackItems.length) * 3 + (totalVotes / 30)));
+  const complexity   = tags.some(t => ['api','sso','auth','enterprise'].includes(t)) ? 'High'
+                     : tags.some(t => ['performance','pagination','mobile'].includes(t)) ? 'Medium' : 'Low';
+  const effortLabel  = complexity === 'High' ? 'L' : complexity === 'Medium' ? 'M' : 'S';
+  const priorityFlag = impactScore >= 8 ? '🔴 CRITICAL — Ship in current sprint'
+                     : impactScore >= 6 ? '🟠 HIGH — Ship in next sprint'
+                     : '🟡 MEDIUM — Backlog for Q-plan';
   return { tags, sources, negCount, totalVotes, avgSentiment, impactScore, complexity, effortLabel, priorityFlag };
 }
 
-export function AppProvider({ children }) {
-  const [view, setView]                       = useState('login');
-  const [user, setUser]                       = useState(null);
-  const [feedback, setFeedback]               = useState([]);
-  const [clusters, setClusters]               = useState([]);
-  const [selectedFeedback, setSelectedFeedback] = useState([]);
-  const [activePRD, setActivePRD]             = useState(null);
-  const [roadmapItems, setRoadmapItems]       = useState(MOCK_ROADMAP_ITEMS);
-  const [isSynthesizing, setIsSynthesizing]   = useState(false);
-  const [isGeneratingPRD, setIsGeneratingPRD] = useState(false);
-  const [prdText, setPrdText]                 = useState('');
-  const [typewriterDone, setTypewriterDone]   = useState(false);
-  const [apiError, setApiError]               = useState(null);
+// ── Supabase helpers ─────────────────────────────────────────────
+const hasSupabase = () =>
+  !!import.meta.env.VITE_SUPABASE_URL &&
+  !!import.meta.env.VITE_SUPABASE_ANON_KEY &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY !== 'PASTE_YOUR_ANON_KEY_HERE';
 
-  // ── Load sample data ───────────────────────────────────────────
-  const loadSampleData = useCallback(() => {
-    setFeedback(SAMPLE_FEEDBACK.map(f => ({ ...f })));
+export function AppProvider({ children }) {
+  const [view, setView]                         = useState('login');
+  const [user, setUser]                         = useState(null);
+  const [authLoading, setAuthLoading]           = useState(true);
+  const [feedback, setFeedback]                 = useState([]);
+  const [clusters, setClusters]                 = useState([]);
+  const [selectedFeedback, setSelectedFeedback] = useState([]);
+  const [activePRD, setActivePRD]               = useState(null);
+  const [roadmapItems, setRoadmapItems]         = useState(MOCK_ROADMAP_ITEMS);
+  const [isSynthesizing, setIsSynthesizing]     = useState(false);
+  const [isGeneratingPRD, setIsGeneratingPRD]   = useState(false);
+  const [prdText, setPrdText]                   = useState('');
+  const [typewriterDone, setTypewriterDone]     = useState(false);
+  const [apiError, setApiError]                 = useState(null);
+
+  // ── Auth: listen for session changes ──────────────────────────
+  useEffect(() => {
+    if (!hasSupabase()) { setAuthLoading(false); return; }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser(session.user);
+        setView('dashboard');
+        loadUserData(session.user.id);
+      }
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        setView('dashboard');
+        loadUserData(session.user.id);
+      } else {
+        setUser(null);
+        setView('login');
+        clearLocalState();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Load all user data from Supabase ──────────────────────────
+  const loadUserData = async (userId) => {
+    try {
+      const [fbRes, clRes, rmRes] = await Promise.all([
+        supabase.from('feedback').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+        supabase.from('clusters').select('*').eq('user_id', userId),
+        supabase.from('roadmap_items').select('*').eq('user_id', userId).order('created_at'),
+      ]);
+
+      if (fbRes.data?.length)  setFeedback(fbRes.data.map(dbToFeedback));
+      if (clRes.data?.length)  setClusters(clRes.data.map(dbToCluster));
+      if (rmRes.data?.length)  setRoadmapItems(rmRes.data.map(dbToRoadmap));
+      else                     setRoadmapItems(MOCK_ROADMAP_ITEMS);
+    } catch (err) {
+      console.error('loadUserData error:', err);
+    }
+  };
+
+  // ── DB ↔ State shape converters ───────────────────────────────
+  const dbToFeedback = r => ({
+    id: r.id, source: r.source, author: r.author, avatar: r.avatar,
+    text: r.text, sentiment: Number(r.sentiment),
+    sentimentLabel: r.sentiment_label, tags: r.tags ?? [],
+    votes: r.votes, clusterId: r.cluster_id, timestamp: r.timestamp_label,
+  });
+  const dbToCluster = r => ({
+    id: r.id, name: r.name, color: r.color, icon: r.icon,
+    feedbackIds: r.feedback_ids ?? [],
+  });
+  const dbToRoadmap = r => ({
+    id: r.id, title: r.title, priority: r.priority, effort: r.effort,
+    impact: r.impact, status: r.status, prdId: r.prd_id,
+  });
+
+  // ── Clear local state on logout ───────────────────────────────
+  const clearLocalState = () => {
+    setFeedback([]); setClusters([]); setSelectedFeedback([]);
+    setActivePRD(null); setPrdText(''); setApiError(null);
+    setRoadmapItems(MOCK_ROADMAP_ITEMS);
+  };
+
+  // ── Auth actions ──────────────────────────────────────────────
+  const login = useCallback(async ({ email, password }) => {
+    if (!hasSupabase()) {
+      // Offline demo mode
+      setUser({ id: 'demo', email, user_metadata: { full_name: 'Demo User' } });
+      setView('dashboard');
+      return { error: null };
+    }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { error };
+    setUser(data.user);
+    setView('dashboard');
+    return { error: null };
+  }, []);
+
+  const signUp = useCallback(async ({ email, password, fullName }) => {
+    if (!hasSupabase()) return { error: new Error('Supabase not configured') };
+    const { data, error } = await supabase.auth.signUp({
+      email, password,
+      options: { data: { full_name: fullName } },
+    });
+    if (error) return { error };
+    return { data, error: null };
+  }, []);
+
+  const logout = useCallback(async () => {
+    if (hasSupabase()) await supabase.auth.signOut();
+    clearLocalState();
+    setUser(null);
+    setView('login');
+  }, []);
+
+  // ── Load sample data ──────────────────────────────────────────
+  const loadSampleData = useCallback(async () => {
+    const items = SAMPLE_FEEDBACK.map(f => ({ ...f }));
+    setFeedback(items);
     setClusters([]);
     setSelectedFeedback([]);
     setApiError(null);
-  }, []);
+
+    // Persist to Supabase if logged in
+    if (hasSupabase() && user) {
+      const rows = items.map(f => ({
+        id: f.id, user_id: user.id, source: f.source,
+        author: f.author, avatar: f.avatar, text: f.text,
+        sentiment: f.sentiment, sentiment_label: f.sentimentLabel,
+        tags: f.tags, votes: f.votes, cluster_id: null,
+        timestamp_label: f.timestamp,
+      }));
+      // Upsert so re-loading doesn't duplicate
+      await supabase.from('feedback').upsert(rows, { onConflict: 'id' });
+    }
+  }, [user]);
 
   const toggleFeedbackSelection = useCallback((id) => {
     setSelectedFeedback(prev =>
@@ -82,51 +189,54 @@ export function AppProvider({ children }) {
     );
   }, []);
 
-  // ── AI: Cluster Synthesis ──────────────────────────────────────
+  // ── AI: Cluster Synthesis ────────────────────────────────────
   const synthesizeClusters = useCallback(async () => {
     setIsSynthesizing(true);
     setApiError(null);
 
     try {
+      let aiClusters;
+
       if (NVIDIA_API_KEY) {
         const feedbackSummary = feedback
           .map(f => `[${f.id}] (${f.source}) "${f.text.slice(0, 120)}" — tags: ${f.tags.join(', ')} — sentiment: ${f.sentiment}`)
           .join('\n');
 
-        const systemPrompt = `You are a senior product analyst. Cluster the following user feedback items into 3–5 thematic groups. 
-For each cluster return ONLY a valid JSON array (no markdown, no explanation) in this exact shape:
-[
-  { "id": "c-001", "name": "Short Cluster Name", "color": "#hexcolor", "icon": "emoji", "feedbackIds": ["fb-001", "fb-003"] }
-]
-Use distinct hex colours per cluster. Use single relevant emoji icons.`;
-
         const content = await nvidiaChat([
-          { role: 'system', content: systemPrompt },
-          { role: 'user',   content: `Feedback items to cluster:\n${feedbackSummary}` },
+          { role: 'system', content: `You are a senior product analyst. Cluster the user feedback into 3–5 thematic groups. Return ONLY a valid JSON array (no markdown, no explanation):
+[{ "id": "c-001", "name": "Short Name", "color": "#hexcolor", "icon": "emoji", "feedbackIds": ["fb-001"] }]` },
+          { role: 'user', content: `Cluster this feedback:\n${feedbackSummary}` },
         ], { maxTokens: 512, temperature: 0.3 });
 
-        // Parse JSON — strip any accidental markdown fences
         const jsonStr = content.replace(/```json|```/g, '').trim();
-        const aiClusters = JSON.parse(jsonStr);
-
-        setClusters(aiClusters);
-        setFeedback(prev => prev.map(f => {
-          const cluster = aiClusters.find(c => c.feedbackIds.includes(f.id));
-          return cluster ? { ...f, clusterId: cluster.id } : f;
-        }));
+        aiClusters = JSON.parse(jsonStr);
       } else {
-        // Fallback: use mock clusters
         await new Promise(r => setTimeout(r, 2200));
-        setClusters(CLUSTER_THEMES);
-        setFeedback(prev => prev.map(f => {
-          const cluster = CLUSTER_THEMES.find(c => c.feedbackIds.includes(f.id));
-          return cluster ? { ...f, clusterId: cluster.id } : f;
-        }));
+        aiClusters = CLUSTER_THEMES;
+      }
+
+      setClusters(aiClusters);
+      const updatedFeedback = feedback.map(f => {
+        const cluster = aiClusters.find(c => c.feedbackIds.includes(f.id));
+        return cluster ? { ...f, clusterId: cluster.id } : f;
+      });
+      setFeedback(updatedFeedback);
+
+      // Persist clusters + updated feedback to Supabase
+      if (hasSupabase() && user) {
+        await supabase.from('clusters').upsert(
+          aiClusters.map(c => ({ id: c.id, user_id: user.id, name: c.name, color: c.color, icon: c.icon, feedback_ids: c.feedbackIds })),
+          { onConflict: 'id' }
+        );
+        for (const f of updatedFeedback) {
+          if (f.clusterId) {
+            await supabase.from('feedback').update({ cluster_id: f.clusterId }).eq('id', f.id).eq('user_id', user.id);
+          }
+        }
       }
     } catch (err) {
-      console.error('Cluster synthesis error:', err);
-      setApiError(`Cluster AI failed — using fallback clusters. (${err.message})`);
-      // Graceful fallback
+      console.error('Cluster error:', err);
+      setApiError(`Cluster AI failed — using fallback. (${err.message})`);
       setClusters(CLUSTER_THEMES);
       setFeedback(prev => prev.map(f => {
         const cluster = CLUSTER_THEMES.find(c => c.feedbackIds.includes(f.id));
@@ -135,9 +245,9 @@ Use distinct hex colours per cluster. Use single relevant emoji icons.`;
     } finally {
       setIsSynthesizing(false);
     }
-  }, [feedback]);
+  }, [feedback, user]);
 
-  // ── AI: PRD Generation ─────────────────────────────────────────
+  // ── AI: PRD Generation ────────────────────────────────────────
   const generatePRD = useCallback(async (feedbackItems) => {
     setIsGeneratingPRD(true);
     setPrdText('');
@@ -148,171 +258,101 @@ Use distinct hex colours per cluster. Use single relevant emoji icons.`;
     const scores = deriveScores(feedbackItems);
 
     try {
+      let prd;
+
       if (NVIDIA_API_KEY) {
         const feedbackBlock = feedbackItems
           .map(f => `- [${f.source.toUpperCase()}] "${f.text}" | sentiment: ${f.sentiment} | votes: ${f.votes} | tags: ${f.tags.join(', ')}`)
           .join('\n');
 
-        const systemPrompt = `You are an architect-grade product manager writing a Technical Specification document.
-Write a complete, professional PRD in GitHub-flavoured Markdown with EXACTLY these 6 sections:
-
+        prd = await nvidiaChat([
+          { role: 'system', content: `You are an architect-grade product manager. Write a complete PRD in GitHub-flavoured Markdown with EXACTLY these 6 sections:
 # Technical Specification — <Feature Title>
-
----
-
 ## 1. Executive Summary
-(problem statement, user persona, key metrics)
-
-## 2. User Stories
-(5 user stories in "As a… I want… so that…" format)
-
-## 3. Functional Requirements
-(7+ SHALL statements with concrete technical details)
-
-## 4. Technical Constraints & Logic
-(API contracts, DB schemas, state management, performance budgets)
-
-## 5. Acceptance Criteria
-(Gherkin Given/When/Then for each major requirement)
-
-## 6. Impact vs. Effort Matrix
-(A markdown table with: Impact Score, Complexity, Effort Estimate, Risk Level, Composite Priority)
-
-Be specific, use real technical terms. Impact score: ${scores.impactScore}/10. Complexity: ${scores.complexity}. Priority: ${scores.priorityFlag}.`;
-
-        const prd = await nvidiaChat([
-          { role: 'system', content: systemPrompt },
-          { role: 'user',   content: `Generate the PRD based on this user feedback:\n${feedbackBlock}` },
+## 2. User Stories (5 stories)
+## 3. Functional Requirements (7+ SHALL statements)
+## 4. Technical Constraints & Logic (API contracts, schemas, perf budgets)
+## 5. Acceptance Criteria (Gherkin Given/When/Then)
+## 6. Impact vs. Effort Matrix (markdown table)
+Impact: ${scores.impactScore}/10. Complexity: ${scores.complexity}. Priority: ${scores.priorityFlag}.` },
+          { role: 'user', content: `Generate the PRD from this feedback:\n${feedbackBlock}` },
         ], { maxTokens: 2048, temperature: 0.65 });
-
-        const prdId = `prd-${Date.now()}`;
-        setActivePRD({ id: prdId, text: prd, feedbackIds: feedbackItems.map(f => f.id), createdAt: new Date() });
-        setPrdText(prd);
       } else {
-        // Fallback: template-based PRD (original logic)
         await new Promise(r => setTimeout(r, 2000));
         const { tags, sources, negCount, totalVotes, avgSentiment, impactScore, complexity, effortLabel, priorityFlag } = scores;
-        const primaryTag   = tags[0] ?? 'performance';
-        const secondaryTag = tags[1] ?? 'reliability';
-        const persona      = negCount > feedbackItems.length / 2
+        const pt = tags[0] ?? 'performance', st = tags[1] ?? 'reliability';
+        const persona = negCount > feedbackItems.length / 2
           ? 'Power users managing high-volume datasets in a B2B SaaS context'
           : 'Operational team leads requiring workflow automation and data portability';
+        prd = `# Technical Specification — ${pt.charAt(0).toUpperCase()+pt.slice(1)} & ${st.charAt(0).toUpperCase()+st.slice(1)} Remediation\n\n---\n\n## 1. Executive Summary\n\n**Problem Statement:** ${negCount} high-signal negative reports (avg. sentiment ${avgSentiment}) totalling **${totalVotes} weighted votes** from **${sources.join(', ')}**.\n\n**User Persona:** ${persona}.\n\n---\n\n## 2. User Stories\n\n- As a **power user**, I want ${pt}-intensive operations without UI blocking.\n- As a **team lead**, I want CSV/XLSX export with column control.\n- As a **mobile operative**, I want crash-free iOS Safari 16+.\n- As an **IT admin**, I want SAML 2.0 / OIDC SSO.\n- As a **backend owner**, I want API endpoints within SLA.\n\n---\n\n## 3. Functional Requirements\n\n- System **shall** implement virtual scrolling for 100+ row tables.\n- System **shall** expose \`POST /api/v2/exports\` with async job queue.\n- System **shall** send email when export exceeds 10,000 rows.\n- System **shall** enforce cursor-based pagination, max 500 rows.\n- System **shall** achieve TTI < 2,000ms (Lighthouse CI).\n- System **shall** implement SAML 2.0 + OIDC auth adapter.\n- System **shall** return structured 4xx errors with \`error_code\`, \`retry_after_ms\`.\n\n---\n\n## 4. Technical Constraints & Logic\n\n- **API:** \`GET /api/v2/records?cursor=&limit=500&sort_by=&filter[]\`\n- **Export Schema:** \`id UUID, status ENUM(queued|processing|done|failed), filter_snapshot JSONB\`\n- **Perf Budget:** LCP ≤ 2.5s, bundle delta < 18KB gzipped.\n- **Rate Limit:** 5 exports/user/hour at API gateway.\n\n---\n\n## 5. Acceptance Criteria\n\n**FR-01**\n- **Given** 1,000+ rows **When** user scrolls **Then** ≤ 30 DOM nodes, ≥ 55fps.\n\n**FR-02**\n- **Given** < 10k rows **When** Export clicked **Then** file downloads within 8s.\n\n**FR-03**\n- **Given** Okta configured **When** SSO login **Then** valid session, no duplicate account.\n\n---\n\n## 6. Impact vs. Effort Matrix\n\n| Dimension | Score | Notes |\n|---|---|---|\n| **Impact Score** | **${impactScore}/10** | ${negCount} negative signals, ${totalVotes} votes |\n| **Complexity** | **${complexity}** | Cross-cutting changes |\n| **Effort** | **${effortLabel}** | Sprint estimate |\n| **Priority** | **${priorityFlag}** | — |\n`;
+      }
 
-        const prd = `# Technical Specification — ${primaryTag.charAt(0).toUpperCase() + primaryTag.slice(1)} & ${secondaryTag.charAt(0).toUpperCase() + secondaryTag.slice(1)} Remediation
+      const prdId = `prd-${Date.now()}`;
+      const prdRecord = { id: prdId, text: prd, feedbackIds: feedbackItems.map(f => f.id), createdAt: new Date() };
+      setActivePRD(prdRecord);
+      setPrdText(prd);
 
----
-
-## 1. Executive Summary
-
-**Problem Statement:** The product exhibits measurable degradation across **${tags.slice(0,3).join(', ')}** workflows, evidenced by ${negCount} high-signal negative reports (avg. sentiment ${avgSentiment}) totalling **${totalVotes} weighted votes** from **${sources.join(', ')}** channels.
-
-**User Persona:** ${persona}.
-
----
-
-## 2. User Stories
-
-- As a **power user**, I want the system to handle **${primaryTag}**-intensive operations without UI blocking.
-- As a **team lead**, I want to export filtered record sets to \`CSV\` and \`XLSX\` with column-level control.
-- As a **mobile field operative**, I want the application to render without crash on iOS Safari 16+.
-- As an **IT administrator**, I want SAML 2.0 / OIDC-compliant SSO via Okta or Azure AD.
-- As a **backend integration owner**, I want all API endpoints to respond within SLA thresholds.
-
----
-
-## 3. Functional Requirements
-
-- The system **shall** implement client-side virtual scrolling for all table views exceeding **100 rows**.
-- The system **shall** expose a \`POST /api/v2/exports\` endpoint returning a \`jobId\` with polling support.
-- The system **shall** deliver export completion notification via email when row count exceeds **10,000 records**.
-- The system **shall** limit synchronous responses to a maximum page size of **500 rows**.
-- The system **shall** reduce initial dashboard TTI to **< 2,000ms** on a 4G baseline.
-- The system **shall** implement SAML 2.0 and OIDC flows via a pluggable auth adapter.
-- The system **shall** surface structured \`4xx\` errors with \`error_code\`, \`message\`, and \`retry_after_ms\`.
-
----
-
-## 4. Technical Constraints & Logic
-
-- **API Contract:** \`GET /api/v2/records\` must support \`cursor\`, \`limit\` (max: 500), \`sort_by\`, and \`filter[]\`.
-- **Export Job Schema:** \`id UUID\`, \`status ENUM(queued|processing|done|failed)\`, \`filter_snapshot JSONB\`.
-- **Performance Budget:** LCP must not regress beyond **2.5s**. Bundle delta **< 18KB gzipped**.
-- **Rate Limiting:** Export endpoint rate-limited to **5 requests/user/hour** at the API gateway layer.
-
----
-
-## 5. Acceptance Criteria
-
-**FR-01 — Virtual Scrolling**
-- **Given** a table with 1,000+ records **When** user scrolls **Then** DOM contains ≤ 30 rendered nodes.
-
-**FR-02 — Async Export**
-- **Given** filters resulting in < 10,000 rows **When** user clicks Export **Then** file downloads within 8 seconds.
-
-**FR-03 — SSO Login**
-- **Given** Okta is configured **When** user clicks SSO **Then** they authenticate and return with a valid session.
-
----
-
-## 6. Impact vs. Effort Matrix
-
-| Dimension | Score | Notes |
-|---|---|---|
-| **Impact Score** | **${impactScore} / 10** | ${negCount} negative signals, ${totalVotes} weighted votes |
-| **Complexity** | **${complexity}** | Cross-cutting changes required |
-| **Effort Estimate** | **${effortLabel}** | Sprint estimate |
-| **Composite Priority** | **${priorityFlag}** | — |
-`;
-        const prdId = `prd-${Date.now()}`;
-        setActivePRD({ id: prdId, text: prd, feedbackIds: feedbackItems.map(f => f.id), createdAt: new Date() });
-        setPrdText(prd);
+      // Persist PRD to Supabase
+      if (hasSupabase() && user) {
+        await supabase.from('prds').insert({
+          id: prdId, user_id: user.id, text: prd,
+          feedback_ids: feedbackItems.map(f => f.id),
+        });
       }
     } catch (err) {
-      console.error('PRD generation error:', err);
-      setApiError(`AI generation failed — check console for details. (${err.message})`);
+      console.error('PRD error:', err);
+      setApiError(`PRD generation failed. (${err.message})`);
     } finally {
       setIsGeneratingPRD(false);
       setTypewriterDone(true);
     }
-  }, []);
+  }, [user]);
 
-  // ── Roadmap actions ────────────────────────────────────────────
-  const addToRoadmap = useCallback((item) => {
+  // ── Roadmap ───────────────────────────────────────────────────
+  const addToRoadmap = useCallback(async (item) => {
     setRoadmapItems(prev => {
       if (prev.find(r => r.id === item.id)) return prev;
       return [...prev, item];
     });
     setView('roadmap');
-  }, []);
 
-  const moveRoadmapItem = useCallback((itemId, newStatus) => {
+    if (hasSupabase() && user) {
+      await supabase.from('roadmap_items').upsert({
+        id: item.id, user_id: user.id, title: item.title,
+        priority: item.priority, effort: item.effort,
+        impact: item.impact, status: item.status, prd_id: item.prdId ?? null,
+      }, { onConflict: 'id' });
+    }
+  }, [user]);
+
+  const moveRoadmapItem = useCallback(async (itemId, newStatus) => {
     setRoadmapItems(prev =>
       prev.map(r => r.id === itemId ? { ...r, status: newStatus } : r)
     );
-  }, []);
+    if (hasSupabase() && user) {
+      await supabase.from('roadmap_items').update({ status: newStatus }).eq('id', itemId).eq('user_id', user.id);
+    }
+  }, [user]);
 
-  // ── Auth ───────────────────────────────────────────────────────
-  const login = useCallback((userData) => {
-    setUser(userData);
-    setView('dashboard');
-  }, []);
-
-  const logout = useCallback(() => {
-    setUser(null);
-    setView('login');
-    setFeedback([]);
-    setClusters([]);
-    setSelectedFeedback([]);
-    setActivePRD(null);
-    setPrdText('');
-    setApiError(null);
-  }, []);
+  // ── Manual feedback input ─────────────────────────────────────
+  const addFeedback = useCallback(async (item) => {
+    setFeedback(prev => [item, ...prev]);
+    if (hasSupabase() && user) {
+      await supabase.from('feedback').insert({
+        id: item.id, user_id: user.id, source: item.source,
+        author: item.author, avatar: item.avatar, text: item.text,
+        sentiment: item.sentiment, sentiment_label: item.sentimentLabel,
+        tags: item.tags, votes: item.votes,
+        timestamp_label: item.timestamp, cluster_id: null,
+      });
+    }
+  }, [user]);
 
   return (
     <AppContext.Provider value={{
       view, setView,
-      user, login, logout,
-      feedback, loadSampleData,
+      user, login, signUp, logout, authLoading,
+      feedback, loadSampleData, addFeedback,
       clusters,
       selectedFeedback, toggleFeedbackSelection, setSelectedFeedback,
       activePRD, prdText,
@@ -321,6 +361,7 @@ Be specific, use real technical terms. Impact score: ${scores.impactScore}/10. C
       isGeneratingPRD, generatePRD,
       typewriterDone,
       apiError,
+      hasSupabase: hasSupabase(),
     }}>
       {children}
     </AppContext.Provider>

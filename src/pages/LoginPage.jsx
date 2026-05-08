@@ -1,29 +1,42 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
-import { AtSignIcon, KeyRoundIcon, RocketIcon } from 'lucide-react';
+import { AtSignIcon, KeyRoundIcon, RocketIcon, UserIcon } from 'lucide-react';
 
 export default function LoginPage() {
-  const { login } = useApp();
+  const { login, signUp } = useApp();
+  const [mode, setMode] = useState('signin');   // 'signin' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) { setError('Please enter your email and password'); return; }
+    if (mode === 'signup' && !fullName.trim()) { setError('Please enter your full name'); return; }
     setLoading(true);
     setError('');
-    await new Promise(r => setTimeout(r, 1800));
-    login({ email, name: email.split('@')[0], role: 'Product Manager' });
+    setSuccess('');
+
+    if (mode === 'signin') {
+      const { error: err } = await login({ email, password });
+      if (err) setError(err.message ?? 'Sign in failed. Check your credentials.');
+    } else {
+      const { error: err } = await signUp({ email, password, fullName });
+      if (err) setError(err.message ?? 'Sign up failed.');
+      else setSuccess('Account created! Check your email to confirm, then sign in.');
+    }
     setLoading(false);
   };
 
   const handleDemo = async () => {
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1200));
-    login({ email: 'demo@roadmap.ai', name: 'Demo User', role: 'Product Manager' });
+    setError('');
+    // Demo uses offline mode (no Supabase credentials needed)
+    await login({ email: 'demo@roadmap.ai', password: 'demo' });
     setLoading(false);
   };
 
@@ -116,18 +129,41 @@ export default function LoginPage() {
             <span style={{ fontSize: '1.1rem', fontWeight: 800, fontFamily: 'Montserrat, sans-serif' }}>Roadmap.ai</span>
           </div>
 
+          {/* Mode toggle */}
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '0.25rem', gap: '0.25rem', marginBottom: '1.75rem' }}>
+            {[{ id: 'signin', label: 'Sign In' }, { id: 'signup', label: 'Create Account' }].map(m => (
+              <button key={m.id} onClick={() => { setMode(m.id); setError(''); setSuccess(''); }}
+                style={{ flex: 1, padding: '0.5rem', borderRadius: 9, border: 'none', fontSize: '0.8rem', fontFamily: 'Montserrat, sans-serif', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s',
+                  background: mode === m.id ? 'linear-gradient(135deg, #4f46e5, #6366f1)' : 'transparent',
+                  color: mode === m.id ? '#fff' : 'rgba(255,255,255,0.4)',
+                  boxShadow: mode === m.id ? '0 0 12px rgba(99,102,241,0.35)' : 'none',
+                }}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+
           {/* Heading */}
-          <div style={{ marginBottom: '2rem' }}>
-            <h1 style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: '0.4rem', fontFamily: 'Montserrat, sans-serif' }}>
-              Welcome back
+          <div style={{ marginBottom: '1.75rem' }}>
+            <h1 style={{ fontSize: '1.8rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: '0.4rem', fontFamily: 'Montserrat, sans-serif' }}>
+              {mode === 'signin' ? 'Welcome back' : 'Create your account'}
             </h1>
             <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.875rem' }}>
-              Sign in to your workspace to continue.
+              {mode === 'signin' ? 'Sign in to your workspace to continue.' : 'Start building smarter roadmaps today.'}
             </p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+            {mode === 'signup' && (
+              <FormInput
+                type="text"
+                placeholder="Full Name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                icon={<UserIcon size={15} />}
+              />
+            )}
             <FormInput
               type="email"
               placeholder="you@company.com"
@@ -145,8 +181,14 @@ export default function LoginPage() {
 
             {error && (
               <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                style={{ color: '#f87171', fontSize: '0.8rem', textAlign: 'center' }}>
+                style={{ color: '#f87171', fontSize: '0.8rem', textAlign: 'center', lineHeight: 1.4 }}>
                 {error}
+              </motion.p>
+            )}
+            {success && (
+              <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                style={{ color: '#4ade80', fontSize: '0.8rem', textAlign: 'center', lineHeight: 1.4 }}>
+                {success}
               </motion.p>
             )}
 
@@ -156,24 +198,17 @@ export default function LoginPage() {
               whileHover={{ scale: loading ? 1 : 1.01 }}
               whileTap={{ scale: loading ? 1 : 0.98 }}
               style={{
-                marginTop: '0.25rem',
-                width: '100%',
-                height: 48,
-                borderRadius: 12,
-                border: 'none',
+                marginTop: '0.25rem', width: '100%', height: 48, borderRadius: 12, border: 'none',
                 background: loading ? 'rgba(99,102,241,0.45)' : 'linear-gradient(135deg, #4f46e5, #6366f1)',
-                color: '#fff',
-                fontFamily: 'Montserrat, sans-serif',
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                letterSpacing: '0.05em',
+                color: '#fff', fontFamily: 'Montserrat, sans-serif', fontWeight: 700,
+                fontSize: '0.9rem', letterSpacing: '0.05em',
                 cursor: loading ? 'not-allowed' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
                 boxShadow: loading ? 'none' : '0 0 24px rgba(99,102,241,0.4)',
                 transition: 'box-shadow 0.25s, background 0.25s',
               }}
             >
-              {loading ? <><LoadingSpinner /> Authenticating...</> : 'Sign In'}
+              {loading ? <><LoadingSpinner /> {mode === 'signin' ? 'Signing in...' : 'Creating account...'}</> : (mode === 'signin' ? 'Sign In' : 'Create Account')}
             </motion.button>
           </form>
 
