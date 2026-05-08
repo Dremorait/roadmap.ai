@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 
@@ -94,11 +95,13 @@ function FeedbackCard({ item, index }) {
 
 export default function DashboardPage() {
   const {
-    feedback, loadSampleData,
+    feedback, loadSampleData, addFeedback, user,
     clusters, synthesizeClusters,
     selectedFeedback, generatePRD,
     isSynthesizing,
   } = useApp();
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const hasData = feedback.length > 0;
   const hasClusters = clusters.length > 0;
@@ -128,6 +131,9 @@ export default function DashboardPage() {
               📥 Load Sample Data
             </button>
           )}
+          <button className="btn-primary" style={{ background: 'linear-gradient(135deg, #00d4ff, #4f46e5)' }} onClick={() => setIsModalOpen(true)}>
+            ➕ Add Feedback
+          </button>
           {hasData && !hasClusters && (
             <button id="synthesize-btn" className="btn-violet" onClick={synthesizeClusters} disabled={isSynthesizing}>
               {isSynthesizing ? <><Spinner /> Clustering...</> : '🔬 Synthesize Clusters'}
@@ -236,6 +242,16 @@ export default function DashboardPage() {
           </div>
         </motion.div>
       )}
+
+      {/* Add Feedback Modal */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <AddFeedbackModal onClose={() => setIsModalOpen(false)} onAdd={(item) => {
+            addFeedback(item);
+            setIsModalOpen(false);
+          }} user={user} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -265,5 +281,86 @@ function Spinner() {
       transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
       style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%' }}
     />
+  );
+}
+
+function AddFeedbackModal({ onClose, onAdd, user }) {
+  const [text, setText] = useState('');
+  const [source, setSource] = useState('slack');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+
+    const authorName = user?.user_metadata?.full_name || 'You';
+    const newItem = {
+      id: `fb-${Date.now()}`,
+      source: source,
+      author: authorName,
+      avatar: authorName.charAt(0).toUpperCase(),
+      text: text,
+      sentiment: 0.5, // Default neutral, could be upgraded with AI later
+      sentimentLabel: 'Neutral',
+      tags: ['manual-entry'],
+      votes: 1,
+      timestamp: 'Just now',
+    };
+    onAdd(newItem);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={{ position: 'absolute', inset: 0, background: 'rgba(5,5,10,0.8)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.95, y: 20 }}
+        onClick={e => e.stopPropagation()}
+        style={{ width: '90%', maxWidth: 450, background: '#11111a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: '1.5rem', boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}
+      >
+        <h2 style={{ fontSize: '1.2rem', fontFamily: 'Montserrat, sans-serif', fontWeight: 800, marginBottom: '1rem' }}>Add Manual Feedback</h2>
+        
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Source</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {['slack', 'intercom', 'zendesk'].map(s => (
+                <button
+                  key={s} type="button" onClick={() => setSource(s)}
+                  style={{ flex: 1, padding: '0.5rem', borderRadius: 8, background: source === s ? SOURCE_CONFIG[s].bg : 'rgba(255,255,255,0.05)', border: `1px solid ${source === s ? SOURCE_CONFIG[s].color : 'transparent'}`, color: source === s ? SOURCE_CONFIG[s].color : 'rgba(255,255,255,0.5)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', fontSize: '0.8rem' }}
+                >
+                  {SOURCE_CONFIG[s].icon} {SOURCE_CONFIG[s].label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>User Feedback</label>
+            <textarea
+              autoFocus
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder="What did the user say?"
+              style={{ width: '100%', height: 120, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0.75rem', color: '#fff', fontSize: '0.9rem', resize: 'none', outline: 'none' }}
+              onFocus={e => e.target.style.borderColor = '#00d4ff'}
+              onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+            <button type="button" onClick={onClose} style={{ padding: '0.6rem 1rem', borderRadius: 8, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '0.85rem' }}>Cancel</button>
+            <button type="submit" disabled={!text.trim()} style={{ padding: '0.6rem 1.5rem', borderRadius: 8, background: 'linear-gradient(135deg, #00d4ff, #4f46e5)', border: 'none', color: '#fff', fontWeight: 600, cursor: text.trim() ? 'pointer' : 'not-allowed', opacity: text.trim() ? 1 : 0.5, fontSize: '0.85rem' }}>
+              Add to Inbox
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
   );
 }
