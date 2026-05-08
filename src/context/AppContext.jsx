@@ -6,7 +6,7 @@ const AppContext = createContext(null);
 
 // ── NVIDIA NIM config ────────────────────────────────────────────
 const NVIDIA_API_KEY  = import.meta.env.VITE_NVIDIA_API_KEY  ?? '';
-const NVIDIA_BASE_URL = import.meta.env.VITE_NVIDIA_BASE_URL ?? 'https://integrate.api.nvidia.com/v1';
+const NVIDIA_BASE_URL = '/api/nvidia'; // Proxy path (handled by vite.config.js locally and vercel.json in prod)
 const MODEL           = 'meta/llama-3.3-70b-instruct';
 
 async function nvidiaChat(messages, { maxTokens = 2048, temperature = 0.7 } = {}) {
