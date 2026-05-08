@@ -1,0 +1,465 @@
+================================================================
+         ROADMAP.AI — COMPLETE FLOW ALGORITHM (START TO END)
+================================================================
+  A plain-English walk-through of every step the app takes
+  from the moment the user opens the browser to shipping a
+  feature to the Kanban board.
+================================================================
+
+
+PHASE 0 — APPLICATION BOOT
+─────────────────────────────────────────────────────────────────
+
+1.  Browser loads index.html  →  Vite serves the React bundle.
+
+2.  main.jsx renders:
+        <React.StrictMode>
+          <App />
+        </React.StrictMode>
+
+3.  App.jsx wraps everything in <AppProvider> (the global state
+    container) then renders <AppShell>.
+
+4.  AppContext initialises all state:
+    ┌─────────────────────────────────────────────────────────┐
+    │  view            = 'login'   ← starting screen          │
+    │  user            = null                                  │
+    │  feedback        = []                                    │
+    │  clusters        = []                                    │
+    │  selectedFeedback= []                                    │
+    │  activePRD       = null                                  │
+    │  roadmapItems    = MOCK_ROADMAP_ITEMS  (4 seeded items)  │
+    │  isSynthesizing  = false                                 │
+    │  isGeneratingPRD = false                                 │
+    │  prdText         = ''                                    │
+    └─────────────────────────────────────────────────────────┘
+
+5.  AppShell reads view === 'login'  →  renders <LoginPage>.
+
+
+════════════════════════════════════════════════════════════════
+PHASE 1 — LOGIN
+════════════════════════════════════════════════════════════════
+
+1.  User enters credentials on LoginPage and clicks "Sign In".
+
+2.  LoginPage calls:  login(userData)
+        (defined in AppContext)
+
+3.  login() does two things:
+        setUser(userData)       ← stores user object in state
+        setView('dashboard')    ← navigates to Dashboard
+
+4.  AppShell detects view !== 'login'
+        → renders the main layout:
+              <Sidebar>   +   <main> (animated with framer-motion)
+
+5.  AnimatePresence plays the page-enter animation:
+        initial:  opacity=0, x=+20
+        animate:  opacity=1, x=0
+        (duration 300ms, custom ease curve)
+
+6.  DashboardPage is now displayed.
+
+
+════════════════════════════════════════════════════════════════
+PHASE 2 — FEEDBACK INGESTION (Dashboard)
+════════════════════════════════════════════════════════════════
+
+2-A  Empty State
+─────────────────
+    feedback.length === 0
+    → Dashboard shows EmptyState component (📡 animation)
+    → Single button: "📥 Load Sample Data"
+
+2-B  Loading Sample Data
+─────────────────────────
+    User clicks "Load Sample Data":
+        loadSampleData() fires  →
+            setFeedback( SAMPLE_FEEDBACK.map(f => ({...f})) )
+            setClusters([])
+            setSelectedFeedback([])
+
+    SAMPLE_FEEDBACK contains 10 pre-defined feedback items:
+    ┌──────┬───────────┬────────────┬─────────────────────────────┐
+    │  ID  │  Source   │ Sentiment  │  Primary Tags               │
+    ├──────┼───────────┼────────────┼─────────────────────────────┤
+    │ fb-001│ Slack    │ 0.15 (Neg) │ performance, dashboard      │
+    │ fb-002│ Intercom │ 0.32 (Neu) │ export, data               │
+    │ fb-003│ Zendesk  │ 0.08 (Neg) │ mobile, performance, crash  │
+    │ fb-004│ Slack    │ 0.72 (Pos) │ ui, accessibility           │
+    │ fb-005│ Intercom │ 0.12 (Neg) │ performance, pagination     │
+    │ fb-006│ Zendesk  │ 0.11 (Neg) │ api, performance            │
+    │ fb-007│ Slack    │ 0.91 (Pos) │ reporting, automation       │
+    │ fb-008│ Intercom │ 0.40 (Neu) │ export, customization       │
+    │ fb-009│ Zendesk  │ 0.55 (Neu) │ auth, enterprise, sso       │
+    │ fb-010│ Slack    │ 0.09 (Neg) │ mobile, crash, file-upload  │
+    └──────┴───────────┴────────────┴─────────────────────────────┘
+
+    Sentiment thresholds used throughout the app:
+        < 0.35  →  Negative  (red)
+        0.35–0.65  →  Neutral  (amber)
+        ≥ 0.65  →  Positive  (green)
+
+2-C  Dashboard Renders Feedback Grid
+──────────────────────────────────────
+    Each item → <FeedbackCard> component showing:
+        • Source badge (Slack / Intercom / Zendesk)
+        • Author avatar + name
+        • Feedback text
+        • Tag chips (#performance, #api, etc.)
+        • Animated SentimentBar  (score × 100 = width %)
+        • Cluster badge (empty until Phase 3)
+
+    Stats bar shows:
+        Total Signals | Negative | Clusters | Selected
+
+
+════════════════════════════════════════════════════════════════
+PHASE 3 — CLUSTER SYNTHESIS (Dashboard)
+════════════════════════════════════════════════════════════════
+
+    Trigger: User clicks "🔬 Synthesize Clusters"
+             (only visible when feedback is loaded and
+              no clusters exist yet)
+
+    Algorithm inside synthesizeClusters():
+
+    Step 1:  setIsSynthesizing(true)
+             → Shows full-screen loading overlay with
+               rotating spinner ("Vector Clustering in Progress")
+
+    Step 2:  await 2200ms  (simulated AI inference delay)
+
+    Step 3:  setClusters(CLUSTER_THEMES)
+             Pre-computed cluster map:
+             ┌────────┬──────────────────────────┬──────────────────────────────┐
+             │   ID   │  Cluster Name            │  Member Feedback IDs         │
+             ├────────┼──────────────────────────┼──────────────────────────────┤
+             │ c-001  │ ⚡ Performance & Scale   │ fb-001, fb-003, fb-005,      │
+             │        │                          │ fb-006, fb-010               │
+             ├────────┼──────────────────────────┼──────────────────────────────┤
+             │ c-002  │ 📤 Data Export & Import  │ fb-002, fb-008               │
+             ├────────┼──────────────────────────┼──────────────────────────────┤
+             │ c-003  │ 🔐 Enterprise Auth       │ fb-009                       │
+             ├────────┼──────────────────────────┼──────────────────────────────┤
+             │ c-004  │ ✨ Positive Signals      │ fb-004, fb-007               │
+             └────────┴──────────────────────────┴──────────────────────────────┘
+
+    Step 4:  Update every feedback item with its clusterId:
+                feedback.map(f => {
+                  cluster = find cluster whose feedbackIds includes f.id
+                  return cluster ? { ...f, clusterId: cluster.id } : f
+                })
+
+    Step 5:  setIsSynthesizing(false)
+             → Overlay disappears
+             → Each FeedbackCard now shows its colour-coded
+               cluster badge at the bottom
+             → Cluster panel slides up from the bottom of the
+               Dashboard showing all 4 cluster pills
+
+
+════════════════════════════════════════════════════════════════
+PHASE 4 — FEEDBACK SELECTION (Dashboard)
+════════════════════════════════════════════════════════════════
+
+    User clicks on individual FeedbackCards to select them.
+
+    toggleFeedbackSelection(id):
+        if id is already in selectedFeedback  →  remove it
+        else                                  →  add it
+
+    Visual feedback:
+        • Blue selection dot (top-left of card) glows cyan
+        • Card border highlights
+        • "Selected" stat counter increments
+
+    Trigger for next phase:
+        selectedFeedback.length >= 2
+        → "✨ Generate Spec (N)" button appears in the top bar
+
+
+════════════════════════════════════════════════════════════════
+PHASE 5 — PRD (SPEC) GENERATION
+════════════════════════════════════════════════════════════════
+
+    Trigger: User clicks "✨ Generate Spec"
+
+    generatePRD(feedbackItems) algorithm:
+
+    ── Step A: Immediate UI update ──────────────────────────────
+        setIsGeneratingPRD(true)
+        setPrdText('')
+        setTypewriterDone(false)
+        setView('spec')          ← navigates to SpecBuilderPage
+
+    ── Step B: Data Extraction from selected feedback ───────────
+        tags        = unique flat list of all tags across items
+        sources     = unique list of source channels
+        negCount    = items where sentiment < 0.35
+        posCount    = items where sentiment >= 0.65
+        totalVotes  = sum of all vote counts
+        avgSentiment= mean sentiment, 2 decimal places
+        primaryTag  = tags[0]   (e.g. "performance")
+        secondaryTag= tags[1]   (e.g. "mobile")
+        thirdTag    = tags[2]
+
+    ── Step C: Persona Derivation ───────────────────────────────
+        if negCount > (items.length / 2):
+            persona = "Power users managing high-volume datasets
+                       in a B2B SaaS context"
+        else:
+            persona = "Operational team leads requiring workflow
+                       automation and data portability"
+
+    ── Step D: Score Calculation ─────────────────────────────────
+        impactScore = min(10, round(
+                        4
+                        + (negCount / items.length) × 3
+                        + (totalVotes / 30)
+                      ))
+
+        complexity  = 'High'   if tags include api/sso/auth/enterprise
+                    = 'Medium' if tags include performance/pagination/mobile
+                    = 'Low'    otherwise
+
+        effort      = 'L–XL'  if High
+                    = 'M'     if Medium
+                    = 'S'     if Low
+
+        priorityFlag= '🔴 CRITICAL' if impactScore >= 8
+                    = '🟠 HIGH'     if impactScore >= 6
+                    = '🟡 MEDIUM'   otherwise
+
+    ── Step E: PRD Document Assembly ────────────────────────────
+        Builds a 6-section Markdown document:
+
+        Section 1 — Executive Summary
+            • Problem statement quoting negCount, avgSentiment,
+              totalVotes, sources, and persona
+
+        Section 2 — User Stories (5 stories)
+            • Power user: performance-intensive ops
+            • Team lead: CSV/XLSX export with column control
+            • Mobile field operative: iOS Safari 16+
+            • IT admin: SAML 2.0 / OIDC SSO
+            • Backend owner: API SLA under concurrent load
+
+        Section 3 — Functional Requirements (7 SHALL statements)
+            • Virtual scrolling for 100+ row tables
+            • POST /api/v2/exports async job endpoint
+            • Email delivery for exports > 10,000 rows
+            • Cursor-based pagination, max 500 rows/page
+            • TTI < 2,000ms (Lighthouse CI)
+            • SAML 2.0 + OIDC auth adapter
+            • Structured 4xx error envelope
+
+        Section 4 — Technical Constraints & Logic
+            • API contract: cursor/limit/sort/filter params
+            • DB schema: exports table (UUID, JSONB, ENUM, etc.)
+            • State: React Context polling with exponential back-off
+            • Auth: AuthProvider interface definition
+            • Mobile: ≥99.5% crash-free on iOS Safari 16+
+            • Perf budget: LCP ≤ 2.5s, bundle delta < 18KB gzip
+            • Rate limit: 5 exports/user/hour at API gateway
+
+        Section 5 — Acceptance Criteria (Gherkin format)
+            FR-01  Virtual Scrolling: ≤30 DOM nodes, ≥55fps
+            FR-02  Small Export: < 10k rows downloaded in <8s
+            FR-03  Large Export: > 10k rows → email + 24h URL
+            FR-04  SSO Login: redirect → IdP → session (no dupe)
+            FR-05  API Perf: p95 < 500ms @ 200 concurrent users
+
+        Section 6 — Impact vs. Effort Matrix (dynamic table)
+            | Impact Score | impactScore / 10  | ...computed... |
+            | Complexity   | High/Medium/Low    |               |
+            | Effort       | L-XL / M / S       |               |
+            | Risk         | computed           |               |
+            | Priority     | priorityFlag       |               |
+
+    ── Step F: Simulated LLM Delay ──────────────────────────────
+        await 2000ms
+
+    ── Step G: State update ─────────────────────────────────────
+        setActivePRD({ id, text: prd, feedbackIds, createdAt })
+        setPrdText(prd)
+        setIsGeneratingPRD(false)
+        setTypewriterDone(true)
+
+
+════════════════════════════════════════════════════════════════
+PHASE 6 — SPEC BUILDER PAGE (PRD Review)
+════════════════════════════════════════════════════════════════
+
+    SpecBuilderPage layout (split screen):
+
+    LEFT PANEL (320px wide)
+    ─────────────────────────
+        Lists all selected feedback items with:
+        • Source icon + colour
+        • Sentiment score %
+        • Feedback text
+        • Tag chips
+
+    RIGHT PANEL (flex: 1)
+    ─────────────────────────
+        While isGeneratingPRD === true:
+            → Dual-ring spinner + cycling step labels:
+                "Parsing feedback cluster vectors..."
+                "Deriving user personas from sentiment..."
+                "Generating functional requirements..."
+                "Composing Gherkin acceptance criteria..."
+                "Calculating impact vs. effort matrix..."
+                "Finalising technical constraints..."
+              (cycles every 420ms)
+
+        When prdText is available:
+            → <TypewriterText> component animates the Markdown
+              document character-by-character:
+                chunkSize = random(2–5) chars per tick
+                tick rate = 6ms
+                Renders via ReactMarkdown + remark-gfm
+                Blinking cursor shown until done
+
+    Top bar actions (visible once prdText is ready):
+        "⬇️ Export Markdown"   →  downloads PRD-<timestamp>.md
+        "🗺️ Ship to Roadmap"  →  triggers Phase 7
+
+
+════════════════════════════════════════════════════════════════
+PHASE 7 — SHIP TO ROADMAP (SpecBuilderPage → RoadmapPage)
+════════════════════════════════════════════════════════════════
+
+    Trigger: User clicks "🗺️ Ship to Roadmap"
+
+    handleAddToRoadmap() algorithm:
+
+    Step 1:  Collect top tags from selectedItems (unique, flat)
+
+    Step 2:  Build feature title:
+                "Performance & Mobile Remediation"
+                (capitalises first two tags + "Remediation")
+
+    Step 3:  Calculate effort:
+                'L' if tags include api/sso/auth/enterprise
+                'M' if tags include performance/pagination/mobile
+                'S' otherwise
+
+    Step 4:  Calculate impact score (same formula as Phase 5-D)
+
+    Step 5:  Determine priority:
+                impact >= 8  →  'critical'
+                impact >= 6  →  'high'
+                else         →  'medium'
+
+    Step 6:  Call addToRoadmap({
+                id:       'rm-' + Date.now(),
+                title:    featureTitle,
+                priority: priority,
+                effort:   complexity,
+                impact:   impact,
+                status:   'planned',
+                prdId:    activePRD.id
+             })
+
+    addToRoadmap() in AppContext:
+        • Checks for duplicate (by id) → skips if found
+        • Appends new item to roadmapItems array
+        • setView('roadmap')  ←  navigates to Roadmap page
+
+
+════════════════════════════════════════════════════════════════
+PHASE 8 — ROADMAP PAGE (Kanban + Orbital Timeline)
+════════════════════════════════════════════════════════════════
+
+    RoadmapPage has two view modes toggled by the user:
+
+    ── VIEW A: Kanban Board ─────────────────────────────────────
+
+    4 columns (left → right):
+        📌 Planned   |  ⚡ In Progress  |  🔍 Review  |  🚀 Shipped
+
+    Each roadmap item appears as a KanbanCard showing:
+        • Priority badge (Critical/High/Medium/Low)
+        • Effort circle (S/M/L/XL)
+        • Feature title
+        • Impact progress bar (impact × 10 = width %)
+        • "Move to" quick-action buttons for other columns
+
+    Drag & Drop:
+        onDragStart: stores itemId in dataTransfer
+        onDrop on column: reads itemId → moveRoadmapItem(id, newStatus)
+
+    moveRoadmapItem():
+        roadmapItems.map(r =>
+            r.id === itemId ? { ...r, status: newStatus } : r
+        )
+
+    Sprint Progress bar (top right of header):
+        progress = (shipped / totalItems) × 100
+
+    ── VIEW B: Orbital Timeline ─────────────────────────────────
+
+    buildTimelineData() maps each roadmap item to a node:
+        title    = item.title
+        date     = status label (✓ Done / ⚡ Active / 🔍 Review / 📌 Planned)
+        content  = "Priority: X · Effort: Y · Impact: Z/10"
+        icon     = rotating from [Calendar, Code, FileText, User, Clock, Layers]
+        status   = statusMap[item.status]:
+                       shipped     → 'completed'
+                       in-progress → 'in-progress'
+                       review      → 'in-progress'
+                       planned     → 'pending'
+        energy   = priorityToEnergy[priority]:
+                       critical → 100%
+                       high     → 75%
+                       medium   → 50%
+                       low      → 25%
+
+    These nodes are fed into <RadialOrbitalTimeline> which renders
+    an animated orbital ring with clickable nodes.
+
+
+════════════════════════════════════════════════════════════════
+PHASE 9 — LOGOUT
+════════════════════════════════════════════════════════════════
+
+    User clicks Logout in the Sidebar.
+
+    logout() resets ALL state:
+        setUser(null)
+        setView('login')
+        setFeedback([])
+        setClusters([])
+        setSelectedFeedback([])
+        setActivePRD(null)
+        setPrdText('')
+
+    NOTE: roadmapItems is NOT reset — it retains MOCK_ROADMAP_ITEMS
+    plus any user-added items across the session.
+    (Full reset would require a page refresh.)
+
+
+════════════════════════════════════════════════════════════════
+SUMMARY — COMPLETE FLOW IN ONE LINE EACH
+════════════════════════════════════════════════════════════════
+
+  Boot         →  AppContext initialised, view = 'login'
+  Login        →  Credentials entered → login() → view = 'dashboard'
+  Load Data    →  loadSampleData() → 10 feedback items populated
+  Cluster      →  synthesizeClusters() → 2.2s delay → 4 clusters tagged
+  Select       →  toggleFeedbackSelection() × N items (min 2)
+  Generate     →  generatePRD() → extract tags/scores → build 6-section PRD
+  Review       →  SpecBuilderPage shows typewriter PRD animation
+  Export       →  Optional: download PRD as .md file
+  Ship         →  addToRoadmap() → new item created → view = 'roadmap'
+  Kanban       →  Drag cards across 4 status columns
+  Orbital      →  Same items as animated orbital nodes with energy %
+  Logout       →  logout() → all state cleared → view = 'login'
+
+
+================================================================
+  File generated: 2026-05-08
+  Project: Roadmap.ai  (c:\xampp\htdocs\Roadmap.ai)
+================================================================
