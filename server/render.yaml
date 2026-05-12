@@ -1,0 +1,92 @@
+services:
+  # ── Backend API + Webhook Server ──────────────────────────────────
+  - type: web
+    name: roadmap-ai-server
+    runtime: node
+    region: oregon
+    plan: free                      # upgrade to Starter ($7/mo) for production
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node index.js
+    healthCheckPath: /webhook/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 4000
+
+      # Set this to your Vercel URL after deploying frontend
+      - key: FRONTEND_URL
+        sync: false                 # fill manually in Render dashboard
+
+      # PostgreSQL — Render will auto-fill this if you attach a Render DB
+      - key: DATABASE_URL
+        fromDatabase:
+          name: roadmap-ai-db
+          property: connectionString
+
+      # Redis — Render will auto-fill this if you attach a Render Redis
+      - key: REDIS_HOST
+        fromService:
+          name: roadmap-ai-redis
+          type: redis
+          property: host
+
+      # ── Fill these manually in Render dashboard ──
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_PUBSUB_TOPIC
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_VERIFY_TOKEN
+        sync: false
+      - key: META_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: DEFAULT_WORKSPACE_ID
+        value: default
+
+  # ── BullMQ Background Worker ───────────────────────────────────────
+  - type: worker
+    name: roadmap-ai-worker
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node workers/embeddingWorker.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: roadmap-ai-db
+          property: connectionString
+      - key: REDIS_HOST
+        fromService:
+          name: roadmap-ai-redis
+          type: redis
+          property: host
+      - key: GEMINI_API_KEY
+        sync: false
+
+databases:
+  # ── PostgreSQL (with pgvector) ─────────────────────────────────────
+  - name: roadmap-ai-db
+    databaseName: roadmap_ai
+    user: roadmap_admin
+    plan: free
+
+  # ── Redis (for BullMQ) ─────────────────────────────────────────────
+  - name: roadmap-ai-redis
+    plan: free
+    ipAllowList: []

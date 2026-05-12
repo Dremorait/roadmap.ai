@@ -3,6 +3,7 @@ import express                from 'express';
 import cors                   from 'cors';
 import 'dotenv/config';
 import webhookRouter          from './webhookListener.js';
+import authRouter             from './routes/auth.js';
 import { pool, query }        from './db.js';
 import { registerGmailWatch } from './gmailService.js';
 import { recalculateAllCentroids } from './clustering.js';
@@ -16,6 +17,9 @@ app.use(express.json());
 
 // ── Webhook routes ───────────────────────────────────────────────────
 app.use('/webhook', webhookRouter);
+
+// ── Auth routes (Gmail OAuth flow) ───────────────────────────────────
+app.use('/auth', authRouter);
 
 // ── REST API — Clusters (for frontend Integrations page) ─────────────
 

@@ -5,8 +5,17 @@
       "destination": "https://integrate.api.nvidia.com/v1/:match*"
     },
     {
-      "source": "/(.*)",
+      "source": "/api/auth/google/callback",
+      "destination": "/api/auth/callback"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 60
+    }
+  }
 }

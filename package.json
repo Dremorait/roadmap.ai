@@ -19,6 +19,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
+    "googleapis": "^140.0.1",
     "lucide-react": "^1.14.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
@@ -26,7 +27,8 @@
     "react-router-dom": "^7.15.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.5.0",
-    "three": "^0.184.0"
+    "three": "^0.184.0",
+    "uuid": "^11.0.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
