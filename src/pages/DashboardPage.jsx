@@ -102,12 +102,24 @@ export default function DashboardPage() {
     isSynthesizing,
   } = useApp();
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isModalOpen,  setIsModalOpen]  = useState(false);
+  const [showDemo,     setShowDemo]     = useState(false);
 
-  const hasData = feedback.length > 0;
-  const hasClusters = clusters.length > 0;
-  const selectedItems = feedback.filter(f => selectedFeedback.includes(f.id));
-  const negativeCount = feedback.filter(f => f.sentiment < 0.35).length;
+  // Live feedback = only real pipeline items (not demo)
+  const liveFeedback  = feedback.filter(f => f.isAIPipeline);
+  // What to display: live items, or if demo toggled: all
+  const displayFeedback = showDemo ? feedback : liveFeedback;
+
+  const hasLive       = liveFeedback.length > 0;
+  const hasClusters   = clusters.length > 0;
+  const selectedItems = displayFeedback.filter(f => selectedFeedback.includes(f.id));
+  const negativeCount = displayFeedback.filter(f => f.sentiment < 0.35).length;
+
+  // User identity
+  const userName   = user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? 'User';
+  const userEmail  = user?.email ?? '';
+  const userAvatar = user?.user_metadata?.avatar_url ?? null;
+  const initials   = userName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -115,52 +127,75 @@ export default function DashboardPage() {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        style={{ padding: '1.25rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}
+        style={{ padding: '1rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}
       >
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <h1 style={{ fontSize: '1.2rem', fontWeight: 800, fontFamily: 'Montserrat, sans-serif', marginBottom: '0.2rem' }}>
-            Feedback Inbox
-          </h1>
-          <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', fontFamily: 'Inter, sans-serif' }}>
-            {hasData ? `${feedback.length} signals captured · ${negativeCount} require attention` : 'Connect sources to begin ingestion'}
-          </p>
+        {/* User identity */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 200 }}>
+          {/* Avatar */}
+          {userAvatar ? (
+            <img src={userAvatar} alt={userName}
+              style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover',
+                border: '2px solid rgba(0,212,255,0.4)', flexShrink: 0 }} />
+          ) : (
+            <div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+              background: 'linear-gradient(135deg,#00d4ff,#9d00ff)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: 'Montserrat,sans-serif', fontWeight: 800, fontSize: '0.85rem', color: '#0a0a0a' }}>
+              {initials}
+            </div>
+          )}
+          <div>
+            <div style={{ fontSize: '1rem', fontWeight: 800, fontFamily: 'Montserrat,sans-serif', lineHeight: 1.2 }}>
+              {userName}
+            </div>
+            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontFamily: 'Inter,sans-serif' }}>
+              {userEmail} &nbsp;·&nbsp;
+              {hasLive
+                ? <span style={{ color: '#00ff88' }}>● {liveFeedback.length} live signals</span>
+                : <span style={{ color: 'rgba(255,255,255,0.3)' }}>No live signals yet</span>}
+            </div>
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {!hasData && (
-            <button id="load-data-btn" className="btn-primary" onClick={loadSampleData}>
-              📥 Load Sample Data
-            </button>
-          )}
-          <button className="btn-primary" style={{ background: 'linear-gradient(135deg, #00d4ff, #4f46e5)' }} onClick={() => setIsModalOpen(true)}>
+          {/* Demo toggle — opt-in only */}
+          <button
+            id="demo-toggle-btn"
+            onClick={() => { setShowDemo(d => !d); if (!showDemo) loadSampleData(); }}
+            style={{
+              padding: '0.45rem 0.9rem', borderRadius: 8, border: '1px solid',
+              borderColor: showDemo ? 'rgba(255,170,0,0.5)' : 'rgba(255,255,255,0.1)',
+              background: showDemo ? 'rgba(255,170,0,0.1)' : 'transparent',
+              color: showDemo ? '#ffaa00' : 'rgba(255,255,255,0.4)',
+              fontSize: '0.75rem', fontFamily: 'Montserrat,sans-serif', fontWeight: 700,
+              cursor: 'pointer', transition: 'all 0.2s',
+            }}
+          >
+            {showDemo ? '🧪 Demo ON' : '🧪 View Demo'}
+          </button>
+
+          <button className="btn-primary" style={{ background: 'linear-gradient(135deg,#00d4ff,#4f46e5)' }}
+            onClick={() => setIsModalOpen(true)}>
             ➕ Add Feedback
           </button>
-          {hasData && !hasClusters && (
+          {displayFeedback.length > 0 && !hasClusters && (
             <button id="synthesize-btn" className="btn-violet" onClick={synthesizeClusters} disabled={isSynthesizing}>
               {isSynthesizing ? <><Spinner /> Clustering...</> : '🔬 Synthesize Clusters'}
             </button>
           )}
-          {hasData && selectedFeedback.length >= 2 && (
-            <motion.button
-              id="generate-spec-btn"
-              className="btn-primary"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              onClick={() => generatePRD(selectedItems)}
-              style={{ position: 'relative' }}
-            >
+          {displayFeedback.length > 0 && selectedFeedback.length >= 2 && (
+            <motion.button id="generate-spec-btn" className="btn-primary"
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              onClick={() => generatePRD(selectedItems)} style={{ position: 'relative' }}>
               <span>✨ Generate Spec</span>
               <span style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 999, padding: '0.1rem 0.4rem', fontSize: '0.7rem', marginLeft: '0.25rem' }}>{selectedFeedback.length}</span>
             </motion.button>
-          )}
-          {hasData && (
-            <button id="reset-btn" className="btn-ghost" onClick={loadSampleData}>↺ Refresh</button>
           )}
         </div>
       </motion.div>
 
       {/* Stats row */}
-      {hasData && (
+      {displayFeedback.length > 0 && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -168,10 +203,10 @@ export default function DashboardPage() {
           style={{ display: 'flex', gap: '1rem', padding: '1rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
         >
           {[
-            { label: 'Total Signals', value: feedback.length, color: '#00d4ff' },
-            { label: 'Negative', value: negativeCount, color: '#ff4466' },
-            { label: 'Clusters', value: clusters.length, color: '#9d00ff' },
-            { label: 'Selected', value: selectedFeedback.length, color: '#00ff88' },
+            { label: 'Live Signals', value: displayFeedback.length, color: '#00d4ff' },
+            { label: 'Negative',     value: negativeCount,          color: '#ff4466' },
+            { label: 'Clusters',     value: clusters.length,        color: '#9d00ff' },
+            { label: 'Selected',     value: selectedFeedback.length, color: '#00ff88' },
           ].map(stat => (
             <div key={stat.label} style={{ flex: 1, padding: '0.75rem 1rem', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', minWidth: 80 }}>
               <div style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: 'Montserrat, sans-serif', color: stat.color }}>{stat.value}</div>
@@ -205,11 +240,11 @@ export default function DashboardPage() {
 
       {/* Main content */}
       <div style={{ flex: 1, overflow: 'auto', padding: '1.5rem 2rem' }}>
-        {!hasData ? (
-          <EmptyState />
+        {displayFeedback.length === 0 ? (
+          <LiveEmptyState />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-            {feedback.map((item, i) => (
+            {displayFeedback.map((item, i) => (
               <FeedbackCard key={item.id} item={item} index={i} />
             ))}
           </div>
@@ -257,20 +292,25 @@ export default function DashboardPage() {
   );
 }
 
-function EmptyState() {
-  const { loadSampleData } = useApp();
+function LiveEmptyState() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 400, textAlign: 'center', gap: '1.25rem' }}>
       <motion.div
-        animate={{ y: [0, -10, 0] }}
-        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        style={{ fontSize: '4rem' }}
+        animate={{ scale: [1, 1.08, 1], opacity: [0.6, 1, 0.6] }}
+        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+        style={{ fontSize: '3.5rem' }}
       >📡</motion.div>
       <div>
-        <h2 style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: 'Montserrat, sans-serif', marginBottom: '0.5rem' }}>No Signals Yet</h2>
-        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', maxWidth: 360 }}>Connect Slack, Intercom, Zendesk, or Gmail to begin ingesting feedback, or load sample data to explore.</p>
+        <h2 style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: 'Montserrat, sans-serif', marginBottom: '0.5rem' }}>Awaiting Live Signals</h2>
+        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', maxWidth: 380, lineHeight: 1.7 }}>
+          Your inbox is live and monitoring. Send an email to your connected Gmail and it will appear here automatically — classified by AI within seconds.
+        </p>
       </div>
-      <button id="empty-load-btn" className="btn-primary" onClick={loadSampleData}>📥 Load Sample Data</button>
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '0.5rem' }}>
+        <a href="/integrations" style={{ padding: '0.6rem 1.2rem', borderRadius: 10, background: 'linear-gradient(135deg,#00d4ff22,#9d00ff22)', border: '1px solid rgba(0,212,255,0.3)', color: '#00d4ff', fontSize: '0.82rem', fontFamily: 'Montserrat,sans-serif', fontWeight: 700, textDecoration: 'none' }}>
+          🔌 Check Integrations
+        </a>
+      </div>
     </div>
   );
 }
