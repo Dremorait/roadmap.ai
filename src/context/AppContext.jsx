@@ -118,16 +118,13 @@ export function AppProvider({ children }) {
     loadAIFeedback();
   };
 
-  // ── Load AI pipeline feedback (from Gmail, Slack, Instagram) ──
+  // ── Load AI pipeline feedback via backend API ──────────────────
   const loadAIFeedback = async () => {
     try {
-      const { data, error } = await supabase
-        .from('ai_feedback')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (error || !data?.length) return;
+      const res = await fetch('/api/feedback');
+      if (!res.ok) { console.error('loadAIFeedback HTTP', res.status); return; }
+      const { data } = await res.json();
+      if (!data?.length) return;
 
       // Convert ai_feedback rows → dashboard feedback shape
       const aiItems = data.map(r => ({
@@ -136,23 +133,25 @@ export function AppProvider({ children }) {
         author:         r.sender_name ?? r.sender_id ?? 'Unknown',
         avatar:         r.sender_name?.[0]?.toUpperCase() ?? '?',
         text:           r.raw_text ?? '',
-        sentiment:      r.triage === 'Bug Report' ? 0.2
-                      : r.triage === 'Feature Request' ? 0.65
-                      : r.triage === 'Support Query'   ? 0.5 : 0.9,
+        sentiment:      r.triage === 'Bug Report'       ? 0.2
+                      : r.triage === 'Feature Request'  ? 0.65
+                      : r.triage === 'Support Query'    ? 0.5 : 0.9,
         sentimentLabel: r.triage === 'Bug Report' ? 'negative'
                       : r.triage === 'Feature Request' ? 'neutral' : 'positive',
-        tags:           r.triage ? [r.triage.toLowerCase().replace(' ', '-')] : [],
+        tags:           r.triage ? [r.triage.toLowerCase().replace(/ /g, '-')] : [],
         votes:          1,
         clusterId:      r.cluster_id ?? null,
-        timestamp:      r.created_at ? new Date(r.created_at).toLocaleDateString() : 'Today',
+        timestamp:      r.created_at
+                        ? new Date(r.created_at).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })
+                        : 'Just now',
         triage:         r.triage,
-        isAIPipeline:   true,   // flag to distinguish from manual entries
+        isAIPipeline:   true,
       }));
 
-      // Merge with existing — avoid duplicates by id
+      // Merge — avoid duplicates
       setFeedback(prev => {
         const existingIds = new Set(prev.map(f => f.id));
-        const newItems    = aiItems.filter(f => !existingIds.has(f.id));
+        const newItems = aiItems.filter(f => !existingIds.has(f.id));
         return newItems.length ? [...newItems, ...prev] : prev;
       });
     } catch (err) {
