@@ -130,6 +130,19 @@ export const SAMPLE_FEEDBACK = [
     votes: 19,
     clusterId: null,
   },
+  {
+    id: 'fb-011',
+    source: 'gmail',
+    author: 'Elena R.',
+    avatar: 'ER',
+    text: 'Several users are complaining via email that they are not receiving their password reset links. They checked their spam folders as well.',
+    sentiment: 0.10,
+    sentimentLabel: 'Negative',
+    tags: ['email', 'auth', 'bug'],
+    timestamp: '1h ago',
+    votes: 4,
+    clusterId: null,
+  },
 ];
 
 export const CLUSTER_THEMES = [

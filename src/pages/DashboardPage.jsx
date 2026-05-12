@@ -6,6 +6,7 @@ const SOURCE_CONFIG = {
   slack: { color: '#e01e5a', bg: 'rgba(224,30,90,0.12)', icon: '⚡', label: 'Slack' },
   intercom: { color: '#1f8ded', bg: 'rgba(31,141,237,0.12)', icon: '💬', label: 'Intercom' },
   zendesk: { color: '#03363d', bg: 'rgba(3,150,140,0.15)', icon: '🎫', label: 'Zendesk' },
+  gmail: { color: '#ea4335', bg: 'rgba(234,67,53,0.15)', icon: '📧', label: 'Gmail' },
 };
 
 function SentimentBar({ score }) {
@@ -267,7 +268,7 @@ function EmptyState() {
       >📡</motion.div>
       <div>
         <h2 style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: 'Montserrat, sans-serif', marginBottom: '0.5rem' }}>No Signals Yet</h2>
-        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', maxWidth: 360 }}>Connect Slack, Intercom, or Zendesk to begin ingesting feedback, or load sample data to explore.</p>
+        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', maxWidth: 360 }}>Connect Slack, Intercom, Zendesk, or Gmail to begin ingesting feedback, or load sample data to explore.</p>
       </div>
       <button id="empty-load-btn" className="btn-primary" onClick={loadSampleData}>📥 Load Sample Data</button>
     </div>
@@ -329,7 +330,7 @@ function AddFeedbackModal({ onClose, onAdd, user }) {
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Source</label>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              {['slack', 'intercom', 'zendesk'].map(s => (
+              {['slack', 'intercom', 'zendesk', 'gmail'].map(s => (
                 <button
                   key={s} type="button" onClick={() => setSource(s)}
                   style={{ flex: 1, padding: '0.5rem', borderRadius: 8, background: source === s ? SOURCE_CONFIG[s].bg : 'rgba(255,255,255,0.05)', border: `1px solid ${source === s ? SOURCE_CONFIG[s].color : 'transparent'}`, color: source === s ? SOURCE_CONFIG[s].color : 'rgba(255,255,255,0.5)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', fontSize: '0.8rem' }}

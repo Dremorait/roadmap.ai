@@ -8,6 +8,7 @@ const SOURCE_CONFIG = {
   slack: { color: '#e01e5a', icon: '⚡', label: 'Slack' },
   intercom: { color: '#1f8ded', icon: '💬', label: 'Intercom' },
   zendesk: { color: '#03a688', icon: '🎫', label: 'Zendesk' },
+  gmail: { color: '#ea4335', icon: '📧', label: 'Gmail' },
 };
 
 function TypewriterText({ text, speed = 8 }) {
