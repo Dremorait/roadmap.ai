@@ -13,7 +13,7 @@ export async function ingestFeedback(feedback) {
 
   try {
     // ── 1. Persist raw feedback ───────────────────────────────────
-    await supabase.from('feedback').upsert({
+    await supabase.from('ai_feedback').upsert({
       id,
       source:      feedback.source,
       sender_id:   feedback.senderId,
@@ -26,7 +26,7 @@ export async function ingestFeedback(feedback) {
     // ── 2. AI Triage ──────────────────────────────────────────────
     const { classification, confidence, reply } = await triageMessage(feedback.rawText);
 
-    await supabase.from('feedback')
+    await supabase.from('ai_feedback')
       .update({ triage: classification, confidence })
       .eq('id', id);
 

@@ -88,6 +88,15 @@ export function AppProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Poll AI pipeline feedback every 15 seconds ────────────────
+  useEffect(() => {
+    if (!hasSupabase()) return;
+    const interval = setInterval(() => {
+      loadAIFeedback();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Load all user data from Supabase ──────────────────────────
   const loadUserData = async (userId) => {
     try {
@@ -104,7 +113,53 @@ export function AppProvider({ children }) {
     } catch (err) {
       console.error('loadUserData error:', err);
     }
+
+    // Also load AI pipeline feedback (from Gmail/Instagram/Slack)
+    loadAIFeedback();
   };
+
+  // ── Load AI pipeline feedback (from Gmail, Slack, Instagram) ──
+  const loadAIFeedback = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ai_feedback')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error || !data?.length) return;
+
+      // Convert ai_feedback rows → dashboard feedback shape
+      const aiItems = data.map(r => ({
+        id:             r.id,
+        source:         r.source ?? 'gmail',
+        author:         r.sender_name ?? r.sender_id ?? 'Unknown',
+        avatar:         r.sender_name?.[0]?.toUpperCase() ?? '?',
+        text:           r.raw_text ?? '',
+        sentiment:      r.triage === 'Bug Report' ? 0.2
+                      : r.triage === 'Feature Request' ? 0.65
+                      : r.triage === 'Support Query'   ? 0.5 : 0.9,
+        sentimentLabel: r.triage === 'Bug Report' ? 'negative'
+                      : r.triage === 'Feature Request' ? 'neutral' : 'positive',
+        tags:           r.triage ? [r.triage.toLowerCase().replace(' ', '-')] : [],
+        votes:          1,
+        clusterId:      r.cluster_id ?? null,
+        timestamp:      r.created_at ? new Date(r.created_at).toLocaleDateString() : 'Today',
+        triage:         r.triage,
+        isAIPipeline:   true,   // flag to distinguish from manual entries
+      }));
+
+      // Merge with existing — avoid duplicates by id
+      setFeedback(prev => {
+        const existingIds = new Set(prev.map(f => f.id));
+        const newItems    = aiItems.filter(f => !existingIds.has(f.id));
+        return newItems.length ? [...newItems, ...prev] : prev;
+      });
+    } catch (err) {
+      console.error('loadAIFeedback error:', err.message);
+    }
+  };
+
 
   // ── DB ↔ State shape converters ───────────────────────────────
   const dbToFeedback = r => ({
