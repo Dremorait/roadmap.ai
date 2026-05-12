@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import SpecBuilderPage from './pages/SpecBuilderPage';
 import RoadmapPage from './pages/RoadmapPage';
+import IntegrationsPage from './pages/IntegrationsPage';
 import Sidebar from './components/Sidebar';
 
 const PAGE_VARIANTS = {
@@ -56,9 +57,10 @@ function AppShell() {
   }
 
   const pages = {
-    dashboard: <DashboardPage />,
-    spec: <SpecBuilderPage />,
-    roadmap: <RoadmapPage />,
+    dashboard:    <DashboardPage />,
+    spec:         <SpecBuilderPage />,
+    roadmap:      <RoadmapPage />,
+    integrations: <IntegrationsPage />,
   };
 
   return (

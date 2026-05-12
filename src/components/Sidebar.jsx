@@ -2,9 +2,10 @@ import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 
 const NAV_ITEMS = [
-  { id: 'dashboard', icon: '📡', label: 'Feedback Inbox' },
-  { id: 'spec', icon: '📋', label: 'Spec Builder' },
-  { id: 'roadmap', icon: '🗺️', label: 'Smart Roadmap' },
+  { id: 'dashboard',    icon: '📡', label: 'Feedback Inbox' },
+  { id: 'spec',         icon: '📋', label: 'Spec Builder'   },
+  { id: 'roadmap',      icon: '🗺️', label: 'Smart Roadmap'  },
+  { id: 'integrations', icon: '🔌', label: 'Integrations',  badge: '5' },
 ];
 
 export default function Sidebar() {
@@ -42,11 +43,24 @@ export default function Sidebar() {
             style={{ background: 'none', border: '1px solid transparent' }}
           >
             <span style={{ fontSize: '1rem' }}>{item.icon}</span>
-            <span>{item.label}</span>
+            <span style={{ flex: 1 }}>{item.label}</span>
+            {item.badge && view !== item.id && (
+              <span style={{
+                fontSize: '0.58rem', fontWeight: 800,
+                fontFamily: 'Montserrat, sans-serif',
+                background: 'rgba(0,212,255,0.15)',
+                color: '#00d4ff',
+                padding: '0.1rem 0.35rem',
+                borderRadius: 99,
+                border: '1px solid rgba(0,212,255,0.25)',
+              }}>
+                {item.badge}
+              </span>
+            )}
             {view === item.id && (
               <motion.div
                 layoutId="nav-indicator"
-                style={{ marginLeft: 'auto', width: 4, height: 4, borderRadius: '50%', background: '#00d4ff', boxShadow: '0 0 8px rgba(0,212,255,0.8)' }}
+                style={{ width: 4, height: 4, borderRadius: '50%', background: '#00d4ff', boxShadow: '0 0 8px rgba(0,212,255,0.8)' }}
               />
             )}
           </button>
