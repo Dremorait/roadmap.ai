@@ -59,6 +59,11 @@ export function AppProvider({ children }) {
   const [prdText, setPrdText]                   = useState('');
   const [typewriterDone, setTypewriterDone]     = useState(false);
   const [apiError, setApiError]                 = useState(null);
+  const [stats, setStats]                       = useState(null);
+  const [insights, setInsights]                 = useState({ trends: [], summaries: [] });
+  const [isReplyLoading, setIsReplyLoading]     = useState(false);
+  const [feedbackLoading, setFeedbackLoading]   = useState(false);
+  const [filters, setFilters]                   = useState({ source: '', triage: '', area: '', search: '', urgency_min: 0 });
 
   // ── Auth: listen for session changes ──────────────────────────
   useEffect(() => {
@@ -92,12 +97,19 @@ export function AppProvider({ children }) {
   // Also fires immediately on mount so the inbox populates without waiting
   useEffect(() => {
     if (!hasSupabase()) return;
-    loadAIFeedback(); // immediate fetch on mount
+    loadAIFeedback(); 
+    fetchStats();
+    fetchInsights();
+
     const interval = setInterval(() => {
-      loadAIFeedback();
-    }, 10_000);
+      // Smart polling: only fetch if window is active to save resources
+      if (document.visibilityState === 'visible') {
+        loadAIFeedback();
+        fetchStats();
+      }
+    }, 3000); // Upgraded to 3s smart polling
     return () => clearInterval(interval);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filters]); // Refetch when filters change
 
   // ── Load all user data from Supabase ──────────────────────────
   const loadUserData = async (userId) => {
@@ -124,69 +136,75 @@ export function AppProvider({ children }) {
   // Backend returns: { feedback: [{ id, source, sender_name, raw_text, triage, confidence,
   //                                 auto_replied, cluster_id, timestamp, created_at }] }
   const loadAIFeedback = async () => {
+    setFeedbackLoading(true);
     try {
-      const res = await fetch('/api/feedback?limit=100');
-      if (!res.ok) { console.warn('loadAIFeedback HTTP', res.status); return; }
+      const queryParams = new URLSearchParams();
+      Object.entries(filters).forEach(([k, v]) => { if (v) queryParams.append(k, v); });
+      
+      const res = await fetch(`/api/feedback?${queryParams.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      // Backend returns { feedback: [...] } — not { data: [...] }
-      const rows = json.feedback ?? json.data ?? [];
-      if (!rows.length) return;
-
-      const sentimentMap = {
-        'Bug Report':      0.15,
-        'Feature Request': 0.65,
-        'Support Query':   0.50,
-        'Spam':            0.80,
-      };
-      const sentimentLabelMap = {
-        'Bug Report':      'Negative',
-        'Feature Request': 'Neutral',
-        'Support Query':   'Neutral',
-        'Spam':            'Positive',
-      };
-
+      const rows = json.feedback ?? [];
+      
       const aiItems = rows.map(r => ({
         id:             r.id,
         source:         r.source ?? 'gmail',
-        author:         r.sender_name && r.sender_name !== 'unknown'
-                          ? r.sender_name
-                          : r.sender_id ?? 'Unknown',
+        author:         r.sender_name && r.sender_name !== 'unknown' ? r.sender_name : r.sender_id ?? 'Unknown',
         avatar:         (r.sender_name ?? r.sender_id ?? '?')[0]?.toUpperCase() ?? '?',
-        // Show subject in text if available, otherwise raw_text
-        text:           r.metadata?.subject
-                          ? `[${r.metadata.subject}] ${r.raw_text ?? ''}`
-                          : r.raw_text ?? '(empty)',
-        sentiment:      sentimentMap[r.triage] ?? 0.5,
-        sentimentLabel: sentimentLabelMap[r.triage] ?? 'Neutral',
-        tags:           r.triage
-                          ? [r.triage.toLowerCase().replace(/ /g, '-')]
-                          : ['unclassified'],
+        text:           r.raw_text ?? '(empty)',
+        sentiment:      r.sentiment_score ?? 0.5,
+        sentimentLabel: r.sentiment_score < 0.35 ? 'Negative' : r.sentiment_score > 0.65 ? 'Positive' : 'Neutral',
+        tags:           r.triage ? [r.triage.toLowerCase().replace(/ /g, '-')] : ['unclassified'],
         votes:          1,
         clusterId:      r.cluster_id ?? null,
-        timestamp:      r.created_at
-                          ? new Date(r.created_at).toLocaleString('en-IN', {
-                              day: 'numeric', month: 'short',
-                              hour: '2-digit', minute: '2-digit',
-                            })
-                          : 'Just now',
+        timestamp:      r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : 'Just now',
         triage:         r.triage,
         confidence:     r.confidence,
-        isAIPipeline:   true,   // ← marks this as real live data
+        urgency:        r.urgency,
+        productArea:    r.product_area,
+        keyPhrase:      r.key_phrase,
+        autoReplied:    r.auto_replied,
+        isAIPipeline:   true,
       }));
 
-      // Merge — avoid duplicates by id
-      setFeedback(prev => {
-        const existingIds = new Set(prev.map(f => f.id));
-        const newItems = aiItems.filter(f => !existingIds.has(f.id));
-        if (!newItems.length) return prev;
-        // Put newest AI items at the front, keep existing non-AI items
-        const nonAI = prev.filter(f => !f.isAIPipeline);
-        return [...aiItems, ...nonAI]; // replace all AI items with fresh full list
-      });
-
-      console.log(`✅ Loaded ${aiItems.length} AI pipeline emails from backend`);
+      setFeedback(aiItems);
     } catch (err) {
       console.warn('loadAIFeedback error:', err.message);
+    } finally {
+      setFeedbackLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch('/api/stats');
+      if (res.ok) setStats(await res.json());
+    } catch (e) { console.warn('fetchStats error', e); }
+  };
+
+  const fetchInsights = async () => {
+    try {
+      const res = await fetch('/api/insights');
+      if (res.ok) setInsights(await res.json());
+    } catch (e) { console.warn('fetchInsights error', e); }
+  };
+
+  const sendManualReply = async (feedbackId, text) => {
+    setIsReplyLoading(true);
+    try {
+      const res = await fetch(`/api/feedback/${feedbackId}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error('Reply failed');
+      // Optimistic update
+      setFeedback(prev => prev.map(f => f.id === feedbackId ? { ...f, autoReplied: true } : f));
+      return { success: true };
+    } catch (err) {
+      return { error: err.message };
+    } finally {
+      setIsReplyLoading(false);
     }
   };
 
@@ -468,6 +486,9 @@ Impact: ${scores.impactScore}/10. Complexity: ${scores.complexity}. Priority: ${
       isGeneratingPRD, generatePRD,
       typewriterDone,
       apiError,
+      stats, insights, fetchInsights,
+      sendManualReply, isReplyLoading,
+      filters, setFilters, feedbackLoading,
       hasSupabase: hasSupabase(),
     }}>
       {children}

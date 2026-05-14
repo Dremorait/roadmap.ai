@@ -8,7 +8,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const CLUSTER_DISTANCE_THRESHOLD = 0.18;  // cosine distance — tighter = stricter grouping
 const ROADMAP_NODE_THRESHOLD     = 50;    // min members to become a Roadmap Node
-const FORMING_THRESHOLD          = 5;     // min members to leave "forming" status
+const FORMING_THRESHOLD          = 3;     // min members to leave "forming" status (lowered from 5)
 
 /**
  * Core pipeline step: embed → find/create cluster → maybe promote to Roadmap Node.
@@ -107,13 +107,17 @@ export async function assignCluster(feedback) {
  */
 async function generateClusterTitle(seedText) {
   try {
-    const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model  = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash',
+      generationConfig: { temperature: 0.2, maxOutputTokens: 32 },
+    });
     const result = await model.generateContent(
       `In 4–6 words max, give a product-manager-style cluster title for this customer message.
-       Return ONLY the title, no quotes, no punctuation at the end.
-       Message: "${seedText.slice(0, 200)}"`
+       Return ONLY the title — no quotes, no punctuation at the end, no explanation.
+       Make it action-oriented (e.g. "Login Flow Repeatedly Fails", "Request: Dark Mode Toggle").
+       Message: "${seedText.slice(0, 400)}"`
     );
-    return result.response.text().trim().slice(0, 80);
+    return result.response.text().trim().replace(/["'.]/g, '').slice(0, 80);
   } catch {
     return seedText.slice(0, 50) + '…';
   }

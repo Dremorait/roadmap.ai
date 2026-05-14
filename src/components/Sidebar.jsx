@@ -1,147 +1,92 @@
+// src/components/Sidebar.jsx
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
+import { 
+  Inbox, BarChart3, Map, Layout, LineChart, 
+  Settings, LogOut, ChevronRight
+} from 'lucide-react';
 
 const NAV_ITEMS = [
-  { id: 'dashboard',    icon: '📡', label: 'Feedback Inbox' },
-  { id: 'spec',         icon: '📋', label: 'Spec Builder'   },
-  { id: 'roadmap',      icon: '🗺️', label: 'Smart Roadmap'  },
-  { id: 'integrations', icon: '🔌', label: 'Integrations',  badge: '5' },
+  { id: 'dashboard',    icon: <Inbox size={18} />,     label: 'Feedback Inbox' },
+  { id: 'insights',     icon: <LineChart size={18} />, label: 'AI Insights' },
+  { id: 'spec',         icon: <Layout size={18} />,    label: 'Spec Builder'   },
+  { id: 'roadmap',      icon: <Map size={18} />,       label: 'Smart Roadmap'  },
+  { id: 'integrations', icon: <Settings size={18} />,  label: 'Integrations' },
 ];
 
 export default function Sidebar() {
-  const { view, setView, user, logout } = useApp();
+  const { view, setView, user, logout, stats } = useApp();
+
+  const userName  = user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? 'User';
+  const initials  = userName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
   return (
     <motion.div
-      initial={{ x: -60, opacity: 0 }}
+      initial={{ x: -20, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      transition={{ duration: 0.5, ease: [0.16,1,0.3,1] }}
-      className="sidebar"
-      style={{ width: 220, minHeight: '100vh', display: 'flex', flexDirection: 'column', padding: '1.5rem 0.75rem', flexShrink: 0 }}
+      style={{ width: 260, minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#0a0a0c', borderRight: '1px solid rgba(255,255,255,0.05)', flexShrink: 0, padding: '1.5rem' }}
     >
-      {/* Logo */}
-      <div style={{ padding: '0.5rem 0.75rem', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,rgba(0,212,255,0.2),rgba(157,0,255,0.2))', border: '1px solid rgba(0,212,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>🧠</div>
-          <div>
-            <div className="gradient-text-electric" style={{ fontSize: '0.95rem', fontWeight: 900, fontFamily: 'Montserrat, sans-serif' }}>Roadmap.ai</div>
-            <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', fontFamily: 'Montserrat, sans-serif', letterSpacing: '0.06em', textTransform: 'uppercase' }}>PM Intelligence</div>
-          </div>
+      {/* Brand */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2.5rem', padding: '0 0.5rem' }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #00d4ff, #9d00ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(0,212,255,0.3)' }}>
+          <Zap size={20} color="#000" strokeWidth={3} />
+        </div>
+        <div>
+          <div style={{ fontSize: '1.1rem', fontWeight: 900, fontFamily: 'Montserrat', letterSpacing: '-0.02em', background: 'linear-gradient(to right, #fff, rgba(255,255,255,0.6))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Roadmap.ai</div>
+          <div style={{ fontSize: '0.6rem', fontWeight: 700, color: '#00d4ff', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: -2 }}>Market Killer v2</div>
         </div>
       </div>
 
-      <div className="accent-line" style={{ marginBottom: '1.25rem', marginLeft: '0.75rem', marginRight: '0.75rem' }} />
-
-      {/* Nav */}
-      <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+      {/* Navigation */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', flex: 1 }}>
         {NAV_ITEMS.map(item => (
           <button
             key={item.id}
-            id={`nav-${item.id}`}
             onClick={() => setView(item.id)}
-            className={`nav-item ${view === item.id ? 'active' : ''}`}
-            style={{ background: 'none', border: '1px solid transparent' }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '0.8rem 1rem', borderRadius: 12,
+              background: view === item.id ? 'rgba(0,212,255,0.08)' : 'transparent',
+              border: '1px solid',
+              borderColor: view === item.id ? 'rgba(0,212,255,0.15)' : 'transparent',
+              color: view === item.id ? '#00d4ff' : 'rgba(255,255,255,0.4)',
+              cursor: 'pointer', transition: 'all 0.2s', position: 'relative'
+            }}
           >
-            <span style={{ fontSize: '1rem' }}>{item.icon}</span>
-            <span style={{ flex: 1 }}>{item.label}</span>
-            {item.badge && view !== item.id && (
-              <span style={{
-                fontSize: '0.58rem', fontWeight: 800,
-                fontFamily: 'Montserrat, sans-serif',
-                background: 'rgba(0,212,255,0.15)',
-                color: '#00d4ff',
-                padding: '0.1rem 0.35rem',
-                borderRadius: 99,
-                border: '1px solid rgba(0,212,255,0.25)',
-              }}>
-                {item.badge}
-              </span>
+            {item.icon}
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, fontFamily: 'Montserrat', flex: 1, textAlign: 'left' }}>{item.label}</span>
+            
+            {item.id === 'dashboard' && stats?.bugs > 0 && (
+              <span style={{ background: '#ff4466', color: '#fff', fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: 6, fontWeight: 800 }}>{stats.bugs}</span>
             )}
+            
             {view === item.id && (
-              <motion.div
-                layoutId="nav-indicator"
-                style={{ width: 4, height: 4, borderRadius: '50%', background: '#00d4ff', boxShadow: '0 0 8px rgba(0,212,255,0.8)' }}
-              />
+              <motion.div layoutId="active" style={{ position: 'absolute', left: 0, width: 3, height: 20, background: '#00d4ff', borderRadius: '0 4px 4px 0', boxShadow: '0 0 10px #00d4ff' }} />
             )}
           </button>
         ))}
-      </nav>
+      </div>
 
-      {/* User */}
-      <div className="accent-line" style={{ margin: '1rem 0.75rem' }} />
-      <div style={{ padding: '0 0.25rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.65rem 0.75rem', borderRadius: 10, background: 'rgba(255,255,255,0.03)', marginBottom: '0.5rem' }}>
-          <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg,#00d4ff,#9d00ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#0a0a0a', fontFamily: 'Montserrat, sans-serif', flexShrink: 0 }}>
-            {user?.name?.charAt(0).toUpperCase()}
+      {/* User Info */}
+      <div style={{ marginTop: 'auto', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', marginBottom: '1rem' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #00d4ff, #9d00ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 800, color: '#000' }}>
+            {initials}
           </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: 'Montserrat, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
-            <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', fontFamily: 'Inter, sans-serif' }}>{user?.role}</div>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{userName}</div>
+            <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)' }}>{user?.email}</div>
           </div>
         </div>
-        <button id="logout-btn" onClick={logout} className="btn-ghost" style={{ width: '100%', justifyContent: 'center', fontSize: '0.75rem' }}>
-          Sign Out
+        <button onClick={logout} className="btn-ghost" style={{ width: '100%', justifyContent: 'center', gap: '0.5rem' }}>
+          <LogOut size={14} /> Sign Out
         </button>
       </div>
 
       {/* Dremora Watermark */}
-      <div className="accent-line" style={{ margin: '1rem 0.75rem 0.85rem' }} />
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.6, duration: 0.5 }}
-        style={{ padding: '0 0.75rem', paddingBottom: '0.25rem' }}
-      >
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.55rem',
-          padding: '0.55rem 0.75rem',
-          borderRadius: 10,
-          background: 'rgba(157,0,255,0.04)',
-          border: '1px solid rgba(157,0,255,0.1)',
-          transition: 'all 0.25s ease',
-          cursor: 'default',
-        }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = 'rgba(157,0,255,0.08)';
-            e.currentTarget.style.borderColor = 'rgba(157,0,255,0.25)';
-            e.currentTarget.style.boxShadow = '0 0 16px rgba(157,0,255,0.12)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = 'rgba(157,0,255,0.04)';
-            e.currentTarget.style.borderColor = 'rgba(157,0,255,0.1)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        >
-          {/* Dremora logo image */}
-          <img
-            src="/dremora-icon.png"
-            alt="Dremora"
-            style={{
-              width: 28,
-              height: 28,
-              objectFit: 'contain',
-              flexShrink: 0,
-              filter: 'brightness(1.1) drop-shadow(0 0 4px rgba(157,0,255,0.5))',
-            }}
-          />
-          <div>
-            <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.28)', fontFamily: 'Montserrat, sans-serif', fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1.2 }}>Crafted by</div>
-            <div style={{
-              fontSize: '0.72rem',
-              fontWeight: 800,
-              fontFamily: 'Montserrat, sans-serif',
-              letterSpacing: '0.04em',
-              background: 'linear-gradient(135deg, #c44dff, #00d4ff)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              lineHeight: 1.2,
-            }}>Dremora</div>
-          </div>
-        </div>
-      </motion.div>
+      <div style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: 0.3, justifyContent: 'center' }}>
+        <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.05em' }}>POWERED BY</span>
+        <img src="/dremora-icon.png" alt="Dremora" style={{ width: 16, height: 16 }} />
+      </div>
     </motion.div>
   );
 }

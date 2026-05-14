@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AppProvider, useApp } from './context/AppContext';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import InsightsPage from './pages/InsightsPage';
 import SpecBuilderPage from './pages/SpecBuilderPage';
 import RoadmapPage from './pages/RoadmapPage';
 import IntegrationsPage from './pages/IntegrationsPage';
@@ -58,6 +59,7 @@ function AppShell() {
 
   const pages = {
     dashboard:    <DashboardPage />,
+    insights:     <InsightsPage />,
     spec:         <SpecBuilderPage />,
     roadmap:      <RoadmapPage />,
     integrations: <IntegrationsPage />,

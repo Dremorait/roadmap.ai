@@ -5,8 +5,16 @@
       "destination": "https://integrate.api.nvidia.com/v1/:match*"
     },
     {
-      "source": "/api/auth/google/callback",
-      "destination": "/api/auth/callback"
+      "source": "/api/:match*",
+      "destination": "https://roadmap-ai-server.onrender.com/api/:match*"
+    },
+    {
+      "source": "/auth/:match*",
+      "destination": "https://roadmap-ai-server.onrender.com/auth/:match*"
+    },
+    {
+      "source": "/webhook/:match*",
+      "destination": "https://roadmap-ai-server.onrender.com/webhook/:match*"
     },
     {
       "source": "/((?!api/).*)",

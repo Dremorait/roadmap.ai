@@ -209,9 +209,50 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Montserrat', sans-serif; font-weight: 700; let
 .progress-bar { height:3px; border-radius:2px; background:rgba(255,255,255,0.06); overflow:hidden; }
 .progress-fill { height:100%; border-radius:2px; background:linear-gradient(90deg,#00d4ff,#9d00ff); transition:width 0.6s ease; }
 
+/* Triage Colors */
+.triage-bug     { --t-color: #ff4466; --t-bg: rgba(255,68,102,0.12); }
+.triage-feature { --t-color: #00d4ff; --t-bg: rgba(0,212,255,0.12); }
+.triage-support { --t-color: #ffaa00; --t-bg: rgba(255,170,0,0.12); }
+.triage-spam    { --t-color: rgba(255,255,255,0.4); --t-bg: rgba(255,255,255,0.06); }
+
+.triage-badge {
+  color: var(--t-color);
+  background: var(--t-bg);
+  border: 1px solid color-mix(in srgb, var(--t-color), transparent 70%);
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.65rem;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Masonry Layout */
+.masonry-grid {
+  columns: 3 300px;
+  column-gap: 1rem;
+}
+.masonry-grid > * {
+  break-inside: avoid;
+  margin-bottom: 1rem;
+}
+
 @keyframes float { 0%,100%{transform:translateY(0px)} 50%{transform:translateY(-8px)} }
 @keyframes shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }
 @keyframes slideInUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
 .slide-in-up { animation:slideInUp 0.4s ease forwards; }
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+.scanline {
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 100px;
+  background: linear-gradient(to bottom, transparent, rgba(0,212,255,0.05), transparent);
+  animation: scanline 4s linear infinite;
+  pointer-events: none;
+}
 
 .noise-overlay { position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E"); opacity:0.02; pointer-events:none; z-index:9999; }
