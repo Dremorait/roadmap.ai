@@ -88,12 +88,14 @@ export function AppProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Poll AI pipeline feedback every 15 seconds ────────────────
+  // ── Poll AI pipeline feedback every 10 seconds ──────────────────
+  // Also fires immediately on mount so the inbox populates without waiting
   useEffect(() => {
     if (!hasSupabase()) return;
+    loadAIFeedback(); // immediate fetch on mount
     const interval = setInterval(() => {
       loadAIFeedback();
-    }, 15000);
+    }, 10_000);
     return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -114,48 +116,77 @@ export function AppProvider({ children }) {
       console.error('loadUserData error:', err);
     }
 
-    // Also load AI pipeline feedback (from Gmail/Instagram/Slack)
+    // Also load AI pipeline feedback immediately (Gmail, Slack, etc.)
     loadAIFeedback();
   };
 
   // ── Load AI pipeline feedback via backend API ──────────────────
+  // Backend returns: { feedback: [{ id, source, sender_name, raw_text, triage, confidence,
+  //                                 auto_replied, cluster_id, timestamp, created_at }] }
   const loadAIFeedback = async () => {
     try {
-      const res = await fetch('/api/feedback');
-      if (!res.ok) { console.error('loadAIFeedback HTTP', res.status); return; }
-      const { data } = await res.json();
-      if (!data?.length) return;
+      const res = await fetch('/api/feedback?limit=100');
+      if (!res.ok) { console.warn('loadAIFeedback HTTP', res.status); return; }
+      const json = await res.json();
+      // Backend returns { feedback: [...] } — not { data: [...] }
+      const rows = json.feedback ?? json.data ?? [];
+      if (!rows.length) return;
 
-      // Convert ai_feedback rows → dashboard feedback shape
-      const aiItems = data.map(r => ({
+      const sentimentMap = {
+        'Bug Report':      0.15,
+        'Feature Request': 0.65,
+        'Support Query':   0.50,
+        'Spam':            0.80,
+      };
+      const sentimentLabelMap = {
+        'Bug Report':      'Negative',
+        'Feature Request': 'Neutral',
+        'Support Query':   'Neutral',
+        'Spam':            'Positive',
+      };
+
+      const aiItems = rows.map(r => ({
         id:             r.id,
         source:         r.source ?? 'gmail',
-        author:         r.sender_name ?? r.sender_id ?? 'Unknown',
-        avatar:         r.sender_name?.[0]?.toUpperCase() ?? '?',
-        text:           r.raw_text ?? '',
-        sentiment:      r.triage === 'Bug Report'       ? 0.2
-                      : r.triage === 'Feature Request'  ? 0.65
-                      : r.triage === 'Support Query'    ? 0.5 : 0.9,
-        sentimentLabel: r.triage === 'Bug Report' ? 'negative'
-                      : r.triage === 'Feature Request' ? 'neutral' : 'positive',
-        tags:           r.triage ? [r.triage.toLowerCase().replace(/ /g, '-')] : [],
+        author:         r.sender_name && r.sender_name !== 'unknown'
+                          ? r.sender_name
+                          : r.sender_id ?? 'Unknown',
+        avatar:         (r.sender_name ?? r.sender_id ?? '?')[0]?.toUpperCase() ?? '?',
+        // Show subject in text if available, otherwise raw_text
+        text:           r.metadata?.subject
+                          ? `[${r.metadata.subject}] ${r.raw_text ?? ''}`
+                          : r.raw_text ?? '(empty)',
+        sentiment:      sentimentMap[r.triage] ?? 0.5,
+        sentimentLabel: sentimentLabelMap[r.triage] ?? 'Neutral',
+        tags:           r.triage
+                          ? [r.triage.toLowerCase().replace(/ /g, '-')]
+                          : ['unclassified'],
         votes:          1,
         clusterId:      r.cluster_id ?? null,
         timestamp:      r.created_at
-                        ? new Date(r.created_at).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })
-                        : 'Just now',
+                          ? new Date(r.created_at).toLocaleString('en-IN', {
+                              day: 'numeric', month: 'short',
+                              hour: '2-digit', minute: '2-digit',
+                            })
+                          : 'Just now',
         triage:         r.triage,
-        isAIPipeline:   true,
+        confidence:     r.confidence,
+        isAIPipeline:   true,   // ← marks this as real live data
       }));
 
-      // Merge — avoid duplicates
+      // Merge — avoid duplicates by id
       setFeedback(prev => {
         const existingIds = new Set(prev.map(f => f.id));
         const newItems = aiItems.filter(f => !existingIds.has(f.id));
-        return newItems.length ? [...newItems, ...prev] : prev;
+        if (!newItems.length) return prev;
+        // Put newest AI items at the front, keep existing non-AI items
+        const nonAI = prev.filter(f => !f.isAIPipeline);
+        return [...aiItems, ...nonAI]; // replace all AI items with fresh full list
       });
+
+      console.log(`✅ Loaded ${aiItems.length} AI pipeline emails from backend`);
     } catch (err) {
-      console.error('loadAIFeedback error:', err.message);
+      console.warn('loadAIFeedback error:', err.message);
     }
   };
 

@@ -18,11 +18,21 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      // Proxy NVIDIA AI calls
       '/api/nvidia': {
         target: 'https://integrate.api.nvidia.com/v1',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/nvidia/, ''),
       },
+      // Proxy all backend API calls → Express server on :4000
+      // This fixes fetch('/api/feedback'), fetch('/api/clusters'), etc.
+      '/api/feedback': { target: 'http://localhost:4000', changeOrigin: true },
+      '/api/clusters': { target: 'http://localhost:4000', changeOrigin: true },
+      '/api/stats':    { target: 'http://localhost:4000', changeOrigin: true },
+      // Proxy Gmail OAuth + status calls → Express server on :4000
+      '/auth':         { target: 'http://localhost:4000', changeOrigin: true },
+      '/webhook':      { target: 'http://localhost:4000', changeOrigin: true },
     },
   },
 })
+
