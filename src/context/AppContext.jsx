@@ -217,7 +217,7 @@ export function AppProvider({ children }) {
   // ── Auth actions ──────────────────────────────────────────────
   const login = useCallback(async ({ email, password }) => {
     if (!hasSupabase()) {
-      // Offline demo mode
+      // Offline demo mode — no Supabase
       setUser({ id: 'demo', email, user_metadata: { full_name: 'Demo User' } });
       setView('dashboard');
       return { error: null };
@@ -228,6 +228,22 @@ export function AppProvider({ children }) {
     setView('dashboard');
     return { error: null };
   }, []);
+
+  // ── Demo mode: bypass Supabase entirely ──────────────────────
+  const loginDemo = useCallback(() => {
+    setUser({
+      id:             'demo',
+      email:          'demo@roadmap.ai',
+      user_metadata:  { full_name: 'Demo User' },
+    });
+    // Load sample mock data so the dashboard has content immediately
+    setFeedback(SAMPLE_FEEDBACK.map(f => ({ ...f })));
+    setClusters([]);
+    setSelectedFeedback([]);
+    setApiError(null);
+    setView('dashboard');
+  }, []);
+
 
   const signUp = useCallback(async ({ email, password, fullName }) => {
     if (!hasSupabase()) return { error: new Error('Supabase not configured') };
@@ -436,7 +452,7 @@ Impact: ${scores.impactScore}/10. Complexity: ${scores.complexity}. Priority: ${
   return (
     <AppContext.Provider value={{
       view, setView,
-      user, login, signUp, logout, authLoading,
+      user, login, loginDemo, signUp, logout, authLoading,
       feedback, loadSampleData, addFeedback,
       clusters,
       selectedFeedback, toggleFeedbackSelection, setSelectedFeedback,

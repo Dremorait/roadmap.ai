@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { AtSignIcon, KeyRoundIcon, RocketIcon, UserIcon } from 'lucide-react';
 
 export default function LoginPage() {
-  const { login, signUp } = useApp();
+  const { login, loginDemo, signUp } = useApp();
   const [mode, setMode] = useState('signin');   // 'signin' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,12 +32,9 @@ export default function LoginPage() {
     setLoading(false);
   };
 
-  const handleDemo = async () => {
-    setLoading(true);
-    setError('');
-    // Demo uses offline mode (no Supabase credentials needed)
-    await login({ email: 'demo@roadmap.ai', password: 'demo' });
-    setLoading(false);
+  const handleDemo = () => {
+    // loginDemo is synchronous — bypasses Supabase entirely, loads mock data
+    loginDemo();
   };
 
   return (

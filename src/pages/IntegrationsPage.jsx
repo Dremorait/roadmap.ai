@@ -170,7 +170,7 @@ function GmailCard({ index }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '1.4rem', flexShrink: 0,
         }}>
-          \uD83D\uDCE7
+          📧
         </div>
 
         {/* Name + description */}
@@ -211,7 +211,7 @@ function GmailCard({ index }) {
           animate={{ rotate: expanded ? 180 : 0 }}
           transition={{ duration: 0.25 }}
           style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem', flexShrink: 0 }}
-        >\u25BC</motion.div>
+        >▼</motion.div>
       </div>
 
       {/* Expanded panel */}
