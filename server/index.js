@@ -5,7 +5,7 @@ import 'dotenv/config';
 import webhookRouter          from './webhookListener.js';
 import authRouter             from './routes/auth.js';
 import { pool, query }        from './db.js';
-import { registerGmailWatch } from './gmailService.js';
+import { registerGmailWatch, loadTokensFromDb } from './gmailService.js';
 import { recalculateAllCentroids } from './clustering.js';
 
 const app  = express();
@@ -105,10 +105,16 @@ app.listen(PORT, async () => {
     console.error('❌ Database connection failed:', err.message);
   }
 
-  // Register Gmail watch on startup (renews every 7 days)
-  if (process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_PUBSUB_TOPIC) {
+  // Renew Gmail watch on startup (watch expires every 7 days)
+  // Tokens are loaded from DB — no env-var token required
+  if (process.env.GOOGLE_PUBSUB_TOPIC) {
     try {
-      await registerGmailWatch();
+      const tokens = await loadTokensFromDb();
+      if (tokens?.refresh_token) {
+        await registerGmailWatch(tokens);
+      } else {
+        console.warn('⚠️ Gmail watch skipped: no active token in DB (connect via /auth/google first)');
+      }
     } catch (err) {
       console.warn('⚠️ Gmail watch registration skipped:', err.message);
     }

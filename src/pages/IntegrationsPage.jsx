@@ -1,23 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ── Integration definitions ──────────────────────────────────────────
+// NOTE: Gmail uses a real OAuth flow (GmailCard), not manual fields.
 const INTEGRATIONS = [
-  {
-    id:          'gmail',
-    label:       'Gmail',
-    icon:        '📧',
-    color:       '#ea4335',
-    bg:          'rgba(234,67,53,0.12)',
-    description: 'Read complaint emails from your inbox and auto-reply using AI.',
-    docsUrl:     'https://developers.google.com/gmail/api',
-    fields: [
-      { key: 'clientId',      label: 'OAuth Client ID',     type: 'text',     placeholder: 'xxx.apps.googleusercontent.com' },
-      { key: 'clientSecret',  label: 'OAuth Client Secret', type: 'password', placeholder: '••••••••••••••' },
-      { key: 'refreshToken',  label: 'Refresh Token',       type: 'password', placeholder: '1//0g...' },
-      { key: 'pubsubTopic',   label: 'Pub/Sub Topic',       type: 'text',     placeholder: 'projects/proj/topics/gmail-notif' },
-    ],
-  },
   {
     id:          'instagram',
     label:       'Instagram DMs',
@@ -80,8 +66,272 @@ const STATUS_CONFIG = {
   connected:    { color: '#00ff88', label: 'Connected',    dot: true  },
   disconnected: { color: 'rgba(255,255,255,0.25)', label: 'Not Connected', dot: false },
   error:        { color: '#ff4466', label: 'Error',        dot: true  },
-  testing:      { color: '#ffaa00', label: 'Testing…',     dot: true  },
+  testing:      { color: '#ffaa00', label: 'Testing\u2026',     dot: true  },
 };
+
+// ── Gmail OAuth Card (Bug 5 fix) ─────────────────────────────────────
+const BACKEND = window.location.origin.replace('5173', '4000');
+
+function GmailCard({ index }) {
+  const [status,   setStatus]   = useState('disconnected'); // disconnected | connecting | connected | error
+  const [gmailInfo, setGmailInfo] = useState(null);         // { email, lastSync, watchActive }
+  const [expanded, setExpanded] = useState(false);
+  const [polling,  setPolling]  = useState(false);
+
+  // Poll the backend status endpoint
+  const checkStatus = useCallback(async () => {
+    try {
+      const res  = await fetch(`${BACKEND}/auth/google/status`);
+      const data = await res.json();
+      if (data.connected) {
+        setStatus('connected');
+        setGmailInfo(data);
+        setPolling(false);
+      } else {
+        setStatus('disconnected');
+        setGmailInfo(null);
+      }
+    } catch {
+      // backend not reachable yet — keep current state
+    }
+  }, []);
+
+  // Check status on mount
+  useEffect(() => { checkStatus(); }, [checkStatus]);
+
+  // Listen for postMessage from the OAuth popup
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === 'GMAIL_CONNECTED') {
+        checkStatus();
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [checkStatus]);
+
+  // Poll every 3 s while waiting for OAuth popup to complete
+  useEffect(() => {
+    if (!polling) return;
+    const interval = setInterval(checkStatus, 3000);
+    return () => clearInterval(interval);
+  }, [polling, checkStatus]);
+
+  const handleConnect = () => {
+    setStatus('connecting');
+    setPolling(true);
+    window.open(`${BACKEND}/auth/google`, 'gmail_oauth',
+      'width=520,height=640,menubar=no,toolbar=no,location=no');
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      await fetch(`${BACKEND}/auth/google`, { method: 'DELETE' });
+    } catch { /* ignore */ }
+    setStatus('disconnected');
+    setGmailInfo(null);
+    setExpanded(false);
+  };
+
+  const color = '#ea4335';
+  const st    = status === 'connecting'
+    ? { color: '#ffaa00', label: 'Connecting\u2026', dot: true }
+    : STATUS_CONFIG[status] ?? STATUS_CONFIG.disconnected;
+
+  const lastSyncStr = gmailInfo?.lastSync
+    ? new Date(gmailInfo.lastSync).toLocaleString()
+    : null;
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.07, duration: 0.4 }}
+      style={{
+        borderRadius: 16, background: '#111119',
+        border: `1px solid ${status === 'connected' ? color + '40' : 'rgba(255,255,255,0.07)'}`,
+        overflow: 'hidden', transition: 'border-color 0.3s',
+        boxShadow: status === 'connected' ? `0 0 24px ${color}18` : 'none',
+      }}
+    >
+      {/* Card Header */}
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '1rem',
+          padding: '1.1rem 1.3rem', cursor: 'pointer', userSelect: 'none',
+        }}
+      >
+        {/* Icon */}
+        <div style={{
+          width: 44, height: 44, borderRadius: 12,
+          background: 'rgba(234,67,53,0.12)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '1.4rem', flexShrink: 0,
+        }}>
+          \uD83D\uDCE7
+        </div>
+
+        {/* Name + description */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontFamily: 'Montserrat, sans-serif', fontWeight: 800,
+            fontSize: '0.92rem', marginBottom: '0.2rem',
+          }}>Gmail</div>
+          <div style={{
+            fontSize: '0.75rem', color: 'rgba(255,255,255,0.38)',
+            fontFamily: 'Inter, sans-serif',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {gmailInfo?.email
+              ? `Connected as ${gmailInfo.email}`
+              : 'Read complaint emails from your inbox and auto-reply using AI.'}
+          </div>
+        </div>
+
+        {/* Status badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+          {st.dot && (
+            <motion.div
+              animate={status === 'connected' ? { scale: [1, 1.4, 1], opacity: [1, 0.6, 1] } : {}}
+              transition={{ duration: 1.8, repeat: Infinity }}
+              style={{ width: 7, height: 7, borderRadius: '50%', background: st.color }}
+            />
+          )}
+          <span style={{
+            fontSize: '0.68rem', color: st.color,
+            fontFamily: 'Montserrat, sans-serif', fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+          }}>{st.label}</span>
+        </div>
+
+        {/* Chevron */}
+        <motion.div
+          animate={{ rotate: expanded ? 180 : 0 }}
+          transition={{ duration: 0.25 }}
+          style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem', flexShrink: 0 }}
+        >\u25BC</motion.div>
+      </div>
+
+      {/* Expanded panel */}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div style={{
+              padding: '0 1.3rem 1.3rem',
+              borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem',
+            }}>
+              {status === 'connected' && gmailInfo ? (
+                // ── Connected state ──
+                <>
+                  <div style={{
+                    marginBottom: '1rem', padding: '0.75rem 1rem',
+                    borderRadius: 10, background: 'rgba(0,255,136,0.07)',
+                    border: '1px solid rgba(0,255,136,0.18)',
+                    fontSize: '0.82rem', fontFamily: 'JetBrains Mono, monospace',
+                  }}>
+                    <div style={{ color: '#00ff88', fontWeight: 700, marginBottom: '0.4rem' }}>
+                      ✅ Gmail Active
+                    </div>
+                    <div style={{ color: 'rgba(255,255,255,0.55)', lineHeight: 1.7 }}>
+                      📧 {gmailInfo.email}<br />
+                      🔄 Last sync: {lastSyncStr ?? 'Just now'}<br />
+                      📡 Watch: {gmailInfo.watchActive ? 'Active' : '⚠️ Expired — reconnect'}<br />
+                      📥 Backfill: last 50 emails queued on connect
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.6rem' }}>
+                    <button
+                      onClick={handleConnect}
+                      style={{
+                        flex: 1, padding: '0.6rem', borderRadius: 8,
+                        border: 'none', cursor: 'pointer',
+                        background: 'rgba(255,255,255,0.07)',
+                        color: 'rgba(255,255,255,0.7)',
+                        fontWeight: 700, fontSize: '0.82rem',
+                        fontFamily: 'Montserrat, sans-serif',
+                      }}
+                    >
+                      🔄 Reconnect / Refresh Token
+                    </button>
+                    <button
+                      onClick={handleDisconnect}
+                      style={{
+                        padding: '0.6rem 0.9rem', borderRadius: 8, border: 'none',
+                        background: 'rgba(255,68,68,0.1)',
+                        color: '#ff4466', fontSize: '0.8rem', cursor: 'pointer',
+                        fontFamily: 'Montserrat, sans-serif', fontWeight: 700,
+                      }}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </>
+              ) : (
+                // ── Disconnected / Connecting state ──
+                <>
+                  <div style={{
+                    marginBottom: '1rem', padding: '0.65rem 0.9rem',
+                    borderRadius: 8, background: 'rgba(0,212,255,0.07)',
+                    border: '1px solid rgba(0,212,255,0.18)',
+                    fontSize: '0.78rem', color: 'rgba(255,255,255,0.55)',
+                    fontFamily: 'Inter, sans-serif', lineHeight: 1.6,
+                  }}>
+                    Click <strong style={{ color: '#00d4ff' }}>Connect Gmail</strong> to
+                    open the Google OAuth screen in a new window. After granting access,
+                    this card will update automatically — no manual token copy-paste needed.
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                    <button
+                      id="gmail-connect-btn"
+                      onClick={handleConnect}
+                      disabled={status === 'connecting'}
+                      style={{
+                        flex: 1, padding: '0.6rem', borderRadius: 8,
+                        border: 'none',
+                        cursor: status === 'connecting' ? 'wait' : 'pointer',
+                        background: status === 'connecting'
+                          ? 'rgba(255,170,0,0.18)'
+                          : `linear-gradient(135deg, ${color}, ${color}bb)`,
+                        color: '#fff', fontWeight: 700, fontSize: '0.82rem',
+                        fontFamily: 'Montserrat, sans-serif',
+                        opacity: status === 'connecting' ? 0.8 : 1,
+                        transition: 'opacity 0.2s, background 0.3s',
+                      }}
+                    >
+                      {status === 'connecting' ? '⏳ Waiting for Google OAuth\u2026' : '🔗 Connect Gmail'}
+                    </button>
+                    <a
+                      href="https://developers.google.com/gmail/api"
+                      target="_blank" rel="noopener noreferrer"
+                      style={{
+                        padding: '0.6rem 0.9rem', borderRadius: 8,
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem',
+                        textDecoration: 'none', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Docs ↗
+                    </a>
+                  </div>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
 
 // ── Integration Card ─────────────────────────────────────────────────
 function IntegrationCard({ integration, index }) {
@@ -431,12 +681,15 @@ export default function IntegrationsPage() {
           textTransform: 'uppercase', letterSpacing: '0.08em',
           marginBottom: '0.75rem',
         }}>
-          Available Channels — {INTEGRATIONS.length}
+          Available Channels — {INTEGRATIONS.length + 1}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {/* Gmail uses dedicated OAuth card */}
+          <GmailCard index={0} />
+          {/* All other integrations use the generic credential-field card */}
           {INTEGRATIONS.map((intg, i) => (
-            <IntegrationCard key={intg.id} integration={intg} index={i} />
+            <IntegrationCard key={intg.id} integration={intg} index={i + 1} />
           ))}
         </div>
 
