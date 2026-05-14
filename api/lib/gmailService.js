@@ -86,3 +86,37 @@ function parseMessage(msg) {
     snippet: msg.snippet, rawText,
   };
 }
+
+/**
+ * Fetch the N most recent emails from the inbox (for initial sync).
+ */
+export async function fetchRecentEmails(limit = 15) {
+  const gmail  = await getGmailClient();
+  const emails = [];
+
+  try {
+    const listRes = await gmail.users.messages.list({
+      userId: 'me',
+      labelIds: ['INBOX'],
+      maxResults: limit,
+    });
+
+    const messages = listRes.data.messages ?? [];
+    
+    // Fetch all message details in parallel
+    const msgPromises = messages.map(msg => 
+      gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' })
+    );
+    
+    const msgResponses = await Promise.all(msgPromises);
+    
+    for (const res of msgResponses) {
+      const parsed = parseMessage(res.data);
+      if (parsed.rawText?.length > 5) emails.push(parsed);
+    }
+  } catch (err) {
+    console.error('Gmail fetchRecentEmails error:', err.message);
+  }
+
+  return emails;
+}

@@ -1,6 +1,8 @@
-// api/auth/callback.js — Gmail OAuth callback (Google redirects here)
 import { google }    from 'googleapis';
 import { supabase }  from '../lib/supabase.js';
+import { fetchRecentEmails } from '../lib/gmailService.js';
+import { normalizeGmail }  from '../lib/normalizers.js';
+import { ingestFeedback }  from '../lib/pipeline.js';
 
 export default async function handler(req, res) {
   const { code, error } = req.query;
@@ -47,6 +49,21 @@ export default async function handler(req, res) {
     });
 
     const expiry = new Date(Number(watch.data.expiration)).toLocaleString();
+    
+    // --- Initial Inbox Sync ---
+    // Fetch and ingest the last 15 emails so the dashboard isn't empty
+    try {
+      const recentEmails = await fetchRecentEmails(15);
+      console.log(`Initial sync: fetching ${recentEmails.length} recent emails`);
+      // Process sequentially to respect Gemini API rate limits
+      for (const email of recentEmails) {
+        const feedback = normalizeGmail(email);
+        await ingestFeedback(feedback);
+      }
+    } catch (syncErr) {
+      console.error('Initial sync error:', syncErr.message);
+    }
+
     return res.send(page('✅ Gmail Connected!', `
       <p style="color:rgba(255,255,255,0.7);margin-bottom:1rem">
         Connected <strong style="color:#00d4ff">${data.email}</strong>
@@ -56,7 +73,8 @@ export default async function handler(req, res) {
                   color:rgba(255,255,255,0.6);margin-bottom:1rem;line-height:1.8">
         📡 Gmail watch active until: ${expiry}<br>
         🔑 Tokens saved to Supabase<br>
-        📥 Webhook: /api/webhook/gmail
+        📥 Webhook: /api/webhook/gmail<br>
+        🔄 Initial sync complete (last 10 emails loaded)
       </div>
       <p style="color:rgba(255,255,255,0.4);font-size:0.8rem">
         Emails arriving at ${data.email} now flow into the AI pipeline automatically. You can close this tab.
