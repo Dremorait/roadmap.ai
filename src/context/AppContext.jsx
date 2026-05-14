@@ -193,10 +193,16 @@ export function AppProvider({ children }) {
 
   // ── DB ↔ State shape converters ───────────────────────────────
   const dbToFeedback = r => ({
-    id: r.id, source: r.source, author: r.author, avatar: r.avatar,
-    text: r.text, sentiment: Number(r.sentiment),
-    sentimentLabel: r.sentiment_label, tags: r.tags ?? [],
-    votes: r.votes, clusterId: r.cluster_id, timestamp: r.timestamp_label,
+    id: r.id, source: r.source, 
+    author: r.sender_name && r.sender_name !== 'unknown' ? r.sender_name : r.sender_id ?? 'Unknown',
+    avatar: (r.sender_name ?? r.sender_id ?? '?')[0]?.toUpperCase() ?? '?',
+    text: r.raw_text ?? '', 
+    sentiment: Number(r.sentiment ?? 0.5),
+    sentimentLabel: r.sentiment_label ?? 'Neutral', 
+    tags: r.triage ? [r.triage.toLowerCase().replace(/ /g, '-')] : r.tags ?? [],
+    votes: r.votes ?? 1, 
+    clusterId: r.cluster_id, 
+    timestamp: r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : r.timestamp_label,
   });
   const dbToCluster = r => ({
     id: r.id, name: r.name, color: r.color, icon: r.icon,
@@ -307,7 +313,7 @@ export function AppProvider({ children }) {
           { role: 'system', content: `You are a senior product analyst. Cluster the user feedback into 3–5 thematic groups. Return ONLY a valid JSON array (no markdown, no explanation):
 [{ "id": "c-001", "name": "Short Name", "color": "#hexcolor", "icon": "emoji", "feedbackIds": ["fb-001"] }]` },
           { role: 'user', content: `Cluster this feedback:\n${feedbackSummary}` },
-        ], { maxTokens: 512, temperature: 0.3 });
+        ], { maxTokens: 2048, temperature: 0.3 });
 
         const jsonStr = content.replace(/```json|```/g, '').trim();
         aiClusters = JSON.parse(jsonStr);

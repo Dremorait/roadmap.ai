@@ -7,7 +7,7 @@ import authRouter             from './routes/auth.js';
 import { pool, query }        from './db.js';
 import { registerGmailWatch, loadTokensFromDb } from './gmailService.js';
 import { recalculateAllCentroids } from './clustering.js';
-
+import './workers/embeddingWorker.js';
 const app  = express();
 const PORT = process.env.PORT ?? 4000;
 

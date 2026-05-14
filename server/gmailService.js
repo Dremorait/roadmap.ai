@@ -289,6 +289,10 @@ export function parseGmailMessage(msg) {
     snippet:  msg.snippet,
     rawText,
     labelIds: msg.labelIds ?? [],
+    source:   'gmail',
+    senderId: fromObj.address,
+    senderName: fromObj.name,
+    timestamp: date ? new Date(date).toISOString() : new Date().toISOString(),
   };
 }
 

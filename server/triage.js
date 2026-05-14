@@ -35,7 +35,7 @@ Reply rules (match brand voice: warm, professional, concise):
  * @returns {Promise<{ classification: string, confidence: number, reply: string|null }>}
  */
 export async function triageMessage(feedback) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
 
   const result = await model.generateContent(
     `${SYSTEM_PROMPT}\n\nCustomer message:\n"${feedback.rawText.slice(0, 1000)}"`

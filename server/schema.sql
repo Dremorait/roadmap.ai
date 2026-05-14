@@ -10,7 +10,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ── Unified Feedback Table ──────────────────────────────────
 CREATE TABLE IF NOT EXISTS feedback (
-  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id             TEXT PRIMARY KEY,
   source         TEXT NOT NULL
                    CHECK (source IN ('instagram','gmail','slack','zendesk','intercom')),
   sender_id      TEXT NOT NULL,
@@ -84,7 +84,7 @@ ALTER TABLE feedback
 -- ── Dead-Letter Queue (failed ingestion) ────────────────────
 CREATE TABLE IF NOT EXISTS failed_ingestion (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  feedback_id   UUID,
+  feedback_id   TEXT,
   error_msg     TEXT,
   raw_payload   JSONB,
   retries       INT DEFAULT 0,
